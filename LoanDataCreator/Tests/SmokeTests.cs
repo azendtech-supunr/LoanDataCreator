@@ -16,7 +16,10 @@ public class SmokeTests
 
     private static DistributionsOptions CreateTestDistributions() => new()
     {
-        Branches = new() { ["TestBranch"] = 1.0 },
+        Regions = new()
+        {
+            ["TestRegion"] = new Dictionary<string, double> { ["TestBranch"] = 1.0 }
+        },
         ProductCategories = new() { ["TERM LOAN"] = 1.0 },
         Segments = new() { ["RETAIL"] = 1.0 },
         Industries = new() { ["AGRICULTURE"] = 1.0 },

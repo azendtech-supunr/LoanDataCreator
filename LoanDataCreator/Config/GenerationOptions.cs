@@ -50,6 +50,7 @@ public class CustomersOptions
 public class DistributionsOptions
 {
     public Dictionary<string, double> Branches { get; set; } = new();
+    public Dictionary<string, Dictionary<string, double>> Regions { get; set; } = new();
     public Dictionary<string, double> ProductCategories { get; set; } = new();
     public Dictionary<string, double> Segments { get; set; } = new();
     public Dictionary<string, double> Industries { get; set; } = new();
@@ -57,6 +58,48 @@ public class DistributionsOptions
     public Dictionary<string, double> Natures { get; set; } = new();
     public Dictionary<string, double> InstallmentTypes { get; set; } = new();
     public Dictionary<string, double> CollateralTypes { get; set; } = new();
+
+    /// <summary>
+    /// Gets a flattened view of all branches across all regions.
+    /// If Regions is configured, it flattens all region branches into a single dictionary.
+    /// Otherwise, it returns the Branches dictionary directly.
+    /// </summary>
+    public Dictionary<string, double> GetAllBranches()
+    {
+        if (Regions.Count > 0)
+        {
+            var allBranches = new Dictionary<string, double>();
+            foreach (var (regionName, branches) in Regions)
+            {
+                foreach (var (branchName, weight) in branches)
+                {
+                    allBranches[branchName] = weight;
+                }
+            }
+            return allBranches;
+        }
+        
+        return Branches;
+    }
+
+    /// <summary>
+    /// Gets a flattened dictionary mapping each branch to its region.
+    /// Returns empty dictionary if Regions is not configured.
+    /// </summary>
+    public Dictionary<string, string> GetBranchToRegionMapping()
+    {
+        var mapping = new Dictionary<string, string>();
+        
+        foreach (var (regionName, branches) in Regions)
+        {
+            foreach (var branchName in branches.Keys)
+            {
+                mapping[branchName] = regionName;
+            }
+        }
+        
+        return mapping;
+    }
 }
 
 public class AmountsOptions

@@ -3,6 +3,7 @@ namespace CsvPdGen.Domain;
 public record CustomerMaster(
     string CustomerNumber,
     string Branch,           // ? ADD: Branch assigned at customer level
+    string Region,       // NEW: Region associated with branch
     string Segment,
     string Industry,
     string EarningType,
@@ -17,6 +18,7 @@ public record FacilityMaster(
     string FacilityNumber,
     string CustomerNumber,
     string Branch,
+    string Region,       // NEW: Region associated with branch
     string ProductCategory,
     string Segment,
     string Industry,
@@ -55,6 +57,7 @@ public record PeriodRow(
     string CustomerNumber,
     string FacilityNumber,
     string Branch,
+    string Region,       // NEW: Region associated with branch
     string ProductCategory,
     string Segment,
     string Industry,

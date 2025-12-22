@@ -38,7 +38,10 @@ public class PeriodRowFactory
         var facilityNumber = _customerFactory.CreateFacilityNumber(
             int.Parse(customer.CustomerNumber[4..]), facilityIndex);
 
-        var branch = SampleFromDistribution(_distributions.Branches, random);
+        // Use customer's branch and region instead of generating new ones
+        var branch = customer.Branch;
+        var region = customer.Region;
+        
         var productCategory = SampleFromDistribution(_distributions.ProductCategories, random);
         var installmentType = SampleFromDistribution(_distributions.InstallmentTypes, random);
 
@@ -69,6 +72,7 @@ public class PeriodRowFactory
             customer.CustomerNumber,
             facilityNumber,
             branch,
+            region,              // NEW: Include region
             productCategory,
             customer.Segment,
             customer.Industry,

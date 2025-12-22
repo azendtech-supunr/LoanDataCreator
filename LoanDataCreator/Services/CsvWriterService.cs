@@ -14,6 +14,7 @@ public class CsvWriterService
         "Customer Number",
         "Facility number",
         "Branch",
+        "Region",        // NEW: Add Region column
         "Product category",
         "Segment",
         "Industry",
@@ -95,6 +96,7 @@ public class CsvWriterService
             EscapeCsvField(row.CustomerNumber),
             EscapeCsvField(row.FacilityNumber),
             EscapeCsvField(row.Branch),
+            EscapeCsvField(row.Region),          // NEW: Add Region field
             EscapeCsvField(row.ProductCategory),
             EscapeCsvField(row.Segment),
             EscapeCsvField(row.Industry),

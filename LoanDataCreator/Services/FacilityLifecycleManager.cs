@@ -271,7 +271,8 @@ public class FacilityLifecycleManager
         return new FacilityMaster(
             facilityNumber,
             customer.CustomerNumber,
-            branch,  // ? FIX: Now uses customer's branch
+            branch,
+            customer.Region,  // NEW: Include region from customer
             productCategory,
             customer.Segment,
             customer.Industry,

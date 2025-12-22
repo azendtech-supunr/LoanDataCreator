@@ -30,7 +30,15 @@ public class CustomerFactory
         var facilityRandom = _seedDeriver.CreateCustomerFacilityRandom(customerId);
 
         var customerNumber = $"CUST{customerId:D8}";
-        var branch = SampleFromDistribution(_distributions.Branches, random);  // ? ADD: Assign branch at customer level
+        
+        // Get all branches (flattened from regions if configured)
+        var allBranches = _distributions.GetAllBranches();
+        var branch = SampleFromDistribution(allBranches, random);
+        
+        // Get region for this branch
+        var branchToRegion = _distributions.GetBranchToRegionMapping();
+        var region = branchToRegion.GetValueOrDefault(branch, "UNASSIGNED");
+        
         var segment = SampleFromDistribution(_distributions.Segments, random);
         var industry = SampleFromDistribution(_distributions.Industries, random);
         var earningType = SampleFromDistribution(_distributions.EarningTypes, random);
@@ -40,7 +48,8 @@ public class CustomerFactory
 
         return new CustomerMaster(
             customerNumber,
-            branch,              // ? ADD: Include branch
+            branch,
+            region,              // NEW: Include region
             segment,
             industry,
             earningType,
