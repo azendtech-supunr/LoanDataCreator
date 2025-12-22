@@ -5,6 +5,7 @@ public record CustomerMaster(
     string Branch,           // ? ADD: Branch assigned at customer level
     string Region,       // NEW: Region associated with branch
     string Segment,
+    string SegmentForLGD,
     string Industry,
     string EarningType,
     string Nature,
@@ -21,6 +22,7 @@ public record FacilityMaster(
     string Region,       // NEW: Region associated with branch
     string ProductCategory,
     string Segment,
+    string SegmentForLGD,
     string Industry,
     string EarningType,
     string Nature,
@@ -60,6 +62,7 @@ public record PeriodRow(
     string Region,       // NEW: Region associated with branch
     string ProductCategory,
     string Segment,
+    string SegmentForLGD,
     string Industry,
     string EarningType,
     string Nature,

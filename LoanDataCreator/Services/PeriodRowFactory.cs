@@ -72,9 +72,10 @@ public class PeriodRowFactory
             customer.CustomerNumber,
             facilityNumber,
             branch,
-            region,              // NEW: Include region
+            region,
             productCategory,
             customer.Segment,
+            customer.SegmentForLGD,
             customer.Industry,
             customer.EarningType,
             customer.Nature,

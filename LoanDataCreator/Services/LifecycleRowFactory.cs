@@ -101,9 +101,10 @@ public class LifecycleRowFactory
             master.CustomerNumber,
             master.FacilityNumber,
             master.Branch,
-            master.Region,       // NEW: Include region
+            master.Region,
             master.ProductCategory,
             master.Segment,
+            master.SegmentForLGD,
             master.Industry,
             master.EarningType,
             master.Nature,

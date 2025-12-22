@@ -40,6 +40,7 @@ public class CustomerFactory
         var region = branchToRegion.GetValueOrDefault(branch, "UNASSIGNED");
         
         var segment = SampleFromDistribution(_distributions.Segments, random);
+        var segmentForLGD = segment; // For now, same as Segment
         var industry = SampleFromDistribution(_distributions.Industries, random);
         var earningType = SampleFromDistribution(_distributions.EarningTypes, random);
         var nature = SampleFromDistribution(_distributions.Natures, random);
@@ -49,8 +50,9 @@ public class CustomerFactory
         return new CustomerMaster(
             customerNumber,
             branch,
-            region,              // NEW: Include region
+            region,
             segment,
+            segmentForLGD,
             industry,
             earningType,
             nature,

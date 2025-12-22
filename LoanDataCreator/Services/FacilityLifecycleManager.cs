@@ -272,9 +272,10 @@ public class FacilityLifecycleManager
             facilityNumber,
             customer.CustomerNumber,
             branch,
-            customer.Region,  // NEW: Include region from customer
+            customer.Region,
             productCategory,
             customer.Segment,
+            customer.SegmentForLGD,
             customer.Industry,
             customer.EarningType,
             customer.Nature,
