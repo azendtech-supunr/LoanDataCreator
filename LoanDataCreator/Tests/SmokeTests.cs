@@ -24,7 +24,7 @@ public class SmokeTests
         Segments = new() { ["RETAIL"] = 1.0 },
         Industries = new() { ["AGRICULTURE"] = 1.0 },
         EarningTypes = new() { ["SALARY"] = 1.0 },
-        Natures = new() { ["SECURED"] = 1.0 },
+        Natures = new() { ["Non-Revolving"] = 1.0 },
         InstallmentTypes = new() { ["Monthly"] = 1.0 },
         CollateralTypes = new() { ["REAL_ESTATE"] = 1.0 }
     };

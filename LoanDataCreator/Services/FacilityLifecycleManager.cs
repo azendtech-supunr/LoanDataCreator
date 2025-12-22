@@ -260,7 +260,11 @@ public class FacilityLifecycleManager
         // ? FIX: Use customer's branch instead of generating a new one
         var branch = customer.Branch;
         var productCategory = SampleFromDistribution(_distributions.ProductCategories, random);
-        var installmentType = SampleFromDistribution(_distributions.InstallmentTypes, random);
+        
+        // Generate installment type, but set to empty if Nature is Revolving
+        var installmentType = customer.Nature == "Revolving" 
+            ? string.Empty 
+            : SampleFromDistribution(_distributions.InstallmentTypes, random);
 
         var (grantDate, maturityDate) = GenerateDates(productCategory, period.PeriodEndDate, random);
         var limit = GenerateLimit(random);
@@ -452,9 +456,10 @@ public class FacilityLifecycleManager
         
         var multiplier = (nature, productCategory.ToUpperInvariant()) switch
         {
-            ("SECURED", _) => random.NextDouble() * 0.5 + 1.0,
+            ("Non-Revolving", _) => random.NextDouble() * 0.5 + 1.0,
             (_, "MORTGAGE") => random.NextDouble() * 0.3 + 1.2,
-            _ => random.NextDouble() * 0.2 + 0.1
+            ("Revolving", _) => random.NextDouble() * 0.2 + 0.1,
+            _ => random.NextDouble() * 0.3 + 0.5
         };
 
         var collateralValue = Math.Round(limit * (decimal)multiplier, 2);

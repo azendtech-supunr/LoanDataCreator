@@ -43,7 +43,11 @@ public class PeriodRowFactory
         var region = customer.Region;
         
         var productCategory = SampleFromDistribution(_distributions.ProductCategories, random);
-        var installmentType = SampleFromDistribution(_distributions.InstallmentTypes, random);
+        
+        // Generate installment type, but set to empty if Nature is Revolving
+        var installmentType = customer.Nature == "Revolving" 
+            ? string.Empty 
+            : SampleFromDistribution(_distributions.InstallmentTypes, random);
 
         // Generate dates based on product category
         var (grantDate, maturityDate) = GenerateDates(productCategory, periodKey, random);
@@ -266,16 +270,15 @@ public class PeriodRowFactory
     {
         var collateralType = SampleFromDistribution(_distributions.CollateralTypes, random);
         
-        // Collateral value based on nature and product
-        var multiplier = (nature, productCategory) switch
+        var multiplier = (nature, productCategory.ToUpperInvariant()) switch
         {
-            ("SECURED", _) => random.NextDouble() * 0.5 + 1.0, // 100%-150% of limit
-            (_, "MORTGAGE") => random.NextDouble() * 0.3 + 1.2, // 120%-150% of limit
-            _ => random.NextDouble() * 0.2 + 0.1 // 10%-30% of limit for unsecured
+            ("Non-Revolving", _) => random.NextDouble() * 0.5 + 1.0,
+            (_, "MORTGAGE") => random.NextDouble() * 0.3 + 1.2,
+            ("Revolving", _) => random.NextDouble() * 0.2 + 0.1,
+            _ => random.NextDouble() * 0.3 + 0.5
         };
 
         var collateralValue = Math.Round(limit * (decimal)multiplier, 2);
-        
         return (collateralType, collateralValue);
     }
 
