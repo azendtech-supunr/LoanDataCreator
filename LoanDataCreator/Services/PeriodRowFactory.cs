@@ -82,6 +82,9 @@ public class PeriodRowFactory
             grantDate,
             maturityDate,
             interestRate,
+            string.Empty, // No. of Installments in Arrears
+            string.Empty, // Total Remaining Installments (Including Installments in Arrears)
+            string.Empty, // Installments Value
             installmentType,
             daysPastDue,
             limit,

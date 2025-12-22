@@ -111,6 +111,9 @@ public class LifecycleRowFactory
             master.GrantDate,
             master.MaturityDate,
             interestRate,
+            string.Empty, // No. of Installments in Arrears
+            string.Empty, // Total Remaining Installments (Including Installments in Arrears)
+            string.Empty, // Installments Value
             master.InstallmentType,
             daysPastDue,
             master.Limit,
