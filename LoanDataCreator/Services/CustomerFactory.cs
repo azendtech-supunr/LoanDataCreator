@@ -30,6 +30,7 @@ public class CustomerFactory
         var facilityRandom = _seedDeriver.CreateCustomerFacilityRandom(customerId);
 
         var customerNumber = $"CUST{customerId:D8}";
+        var branch = SampleFromDistribution(_distributions.Branches, random);  // ? ADD: Assign branch at customer level
         var segment = SampleFromDistribution(_distributions.Segments, random);
         var industry = SampleFromDistribution(_distributions.Industries, random);
         var earningType = SampleFromDistribution(_distributions.EarningTypes, random);
@@ -39,6 +40,7 @@ public class CustomerFactory
 
         return new CustomerMaster(
             customerNumber,
+            branch,              // ? ADD: Include branch
             segment,
             industry,
             earningType,

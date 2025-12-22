@@ -71,6 +71,9 @@ public class Program
             builder.Services.Configure<DistributionsOptions>(builder.Configuration.GetSection("Distributions"));
             builder.Services.Configure<AmountsOptions>(builder.Configuration.GetSection("Amounts"));
             builder.Services.Configure<DpdModelOptions>(builder.Configuration.GetSection("DpdModel"));
+            builder.Services.Configure<LifecycleOptions>(builder.Configuration.GetSection("Lifecycle"));
+            builder.Services.Configure<DpdEvolutionOptions>(builder.Configuration.GetSection("DpdEvolution"));
+            builder.Services.Configure<QaRulesOptions>(builder.Configuration.GetSection("QaRules"));
             
             // Override with command line arguments if not using --all
             if (!all)
@@ -125,6 +128,9 @@ public class Program
             });
             builder.Services.AddSingleton<CustomerFactory>();
             builder.Services.AddSingleton<PeriodRowFactory>();
+            builder.Services.AddSingleton<FacilityLifecycleManager>();
+            builder.Services.AddSingleton<DpdEvolutionService>();
+            builder.Services.AddSingleton<LifecycleRowFactory>();
             builder.Services.AddSingleton<PeriodPlanner>();
             builder.Services.AddSingleton<CsvWriterService>();
             builder.Services.AddHostedService<RunGenerationService>();
