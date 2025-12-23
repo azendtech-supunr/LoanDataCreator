@@ -15,6 +15,7 @@ public class FacilityLifecycleManager
     private readonly SeedDeriver _seedDeriver;
     private readonly CustomerFactory _customerFactory;
     private readonly DistributionsOptions _distributions;
+    private readonly ProductSegmentMappingOptions _productSegmentMapping;
     private readonly AmountsOptions _amounts;
     private readonly LifecycleOptions _lifecycle;
     private readonly QaRulesOptions _qaRules;
@@ -35,6 +36,7 @@ public class FacilityLifecycleManager
         SeedDeriver seedDeriver,
         CustomerFactory customerFactory,
         IOptions<DistributionsOptions> distributions,
+        IOptions<ProductSegmentMappingOptions> productSegmentMapping,
         IOptions<AmountsOptions> amounts,
         IOptions<LifecycleOptions> lifecycle,
         IOptions<QaRulesOptions> qaRules)
@@ -42,6 +44,7 @@ public class FacilityLifecycleManager
         _seedDeriver = seedDeriver;
         _customerFactory = customerFactory;
         _distributions = distributions.Value;
+        _productSegmentMapping = productSegmentMapping.Value;
         _amounts = amounts.Value;
         _lifecycle = lifecycle.Value;
         _qaRules = qaRules.Value;
@@ -257,9 +260,29 @@ public class FacilityLifecycleManager
         var random = _seedDeriver.CreateCustomerRandom(customerId * 1000 + facilityIndex);
         var facilityNumber = _customerFactory.CreateFacilityNumber(customerId, facilityIndex);
 
-        // ? FIX: Use customer's branch instead of generating a new one
         var branch = customer.Branch;
         var productCategory = SampleFromDistribution(_distributions.ProductCategories, random);
+        
+        // Get segments for this product category from mapping
+        var segmentMapping = _productSegmentMapping.GetSegmentsForProduct(productCategory);
+        SegmentInfo selectedSegment;
+        
+        if (segmentMapping.Count > 0)
+        {
+            // Sample from the product-specific segments using their weights
+            var segmentWeights = segmentMapping.ToDictionary(s => s, s => s.Weight);
+            selectedSegment = SampleFromWeightedList(segmentWeights, random);
+        }
+        else
+        {
+            // Fallback: use default segments if no mapping exists
+            var pdSegment = customer.Segment;
+            selectedSegment = new SegmentInfo 
+            { 
+                PdSegment = pdSegment, 
+                LgdSegment = pdSegment 
+            };
+        }
         
         // Generate installment type, but set to empty if Nature is Revolving
         var installmentType = customer.Nature == "Revolving" 
@@ -270,7 +293,7 @@ public class FacilityLifecycleManager
         var limit = GenerateLimit(random);
         var (collateralType, collateralValue) = GenerateCollateral(customer.Nature, productCategory, limit, random);
         
-        var baseInterestRate = GenerateBaseInterestRate(customer.Segment, random);
+        var baseInterestRate = GenerateBaseInterestRate(selectedSegment.PdSegment, random);
 
         return new FacilityMaster(
             facilityNumber,
@@ -278,8 +301,8 @@ public class FacilityLifecycleManager
             branch,
             customer.Region,
             productCategory,
-            customer.Segment,
-            customer.SegmentForLGD,
+            selectedSegment.PdSegment,
+            selectedSegment.LgdSegment,
             customer.Industry,
             customer.EarningType,
             customer.Nature,
@@ -524,6 +547,22 @@ public class FacilityLifecycleManager
         }
         
         return distribution.Keys.Last();
+    }
+
+    private static T SampleFromWeightedList<T>(Dictionary<T, double> weightedItems, Random random) where T : notnull
+    {
+        var totalWeight = weightedItems.Values.Sum();
+        var randomValue = random.NextDouble() * totalWeight;
+        
+        var cumulativeWeight = 0.0;
+        foreach (var (item, weight) in weightedItems)
+        {
+            cumulativeWeight += weight;
+            if (randomValue <= cumulativeWeight)
+                return item;
+        }
+        
+        return weightedItems.Keys.Last();
     }
 
     private static int CalculatePeriodsBetween(string startPeriod, string endPeriod, string frequency)

@@ -39,8 +39,11 @@ public class CustomerFactory
         var branchToRegion = _distributions.GetBranchToRegionMapping();
         var region = branchToRegion.GetValueOrDefault(branch, "UNASSIGNED");
         
-        var segment = SampleFromDistribution(_distributions.Segments, random);
-        var segmentForLGD = segment; // For now, same as Segment
+        // Segments are now determined at facility level based on product category
+        // Keep empty or placeholder values for customer-level segment fields
+        var segment = string.Empty;
+        var segmentForLGD = string.Empty;
+        
         var industry = SampleFromDistribution(_distributions.Industries, random);
         var earningType = SampleFromDistribution(_distributions.EarningTypes, random);
         var nature = SampleFromDistribution(_distributions.Natures, random);

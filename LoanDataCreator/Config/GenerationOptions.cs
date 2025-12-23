@@ -102,6 +102,39 @@ public class DistributionsOptions
     }
 }
 
+/// <summary>
+/// Configuration for product-to-segment mapping.
+/// Defines which segments are available for each product category.
+/// </summary>
+public class ProductSegmentMappingOptions
+{
+    public List<ProductCategorySegments> ProductSegmentMapping { get; set; } = new();
+
+    /// <summary>
+    /// Gets the segments for a specific product category.
+    /// </summary>
+    public List<SegmentInfo> GetSegmentsForProduct(string productCategory)
+    {
+        var productMapping = ProductSegmentMapping
+            .FirstOrDefault(p => p.ProductCategory.Equals(productCategory, StringComparison.OrdinalIgnoreCase));
+        
+        return productMapping?.Segments ?? new List<SegmentInfo>();
+    }
+}
+
+public class ProductCategorySegments
+{
+    public string ProductCategory { get; set; } = string.Empty;
+    public List<SegmentInfo> Segments { get; set; } = new();
+}
+
+public class SegmentInfo
+{
+    public string PdSegment { get; set; } = string.Empty;
+    public string LgdSegment { get; set; } = string.Empty;
+    public double Weight { get; set; } = 100.0;
+}
+
 public class AmountsOptions
 {
     public decimal LimitMin { get; set; } = 10_000m;

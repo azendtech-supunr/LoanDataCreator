@@ -69,6 +69,7 @@ public class Program
             builder.Services.Configure<FrequenciesOptions>(builder.Configuration.GetSection("Frequencies"));
             builder.Services.Configure<CustomersOptions>(builder.Configuration.GetSection("Customers"));
             builder.Services.Configure<DistributionsOptions>(builder.Configuration.GetSection("Distributions"));
+            builder.Services.Configure<ProductSegmentMappingOptions>(builder.Configuration);
             builder.Services.Configure<AmountsOptions>(builder.Configuration.GetSection("Amounts"));
             builder.Services.Configure<DpdModelOptions>(builder.Configuration.GetSection("DpdModel"));
             builder.Services.Configure<LifecycleOptions>(builder.Configuration.GetSection("Lifecycle"));
