@@ -263,6 +263,9 @@ public class FacilityLifecycleManager
         var branch = customer.Branch;
         var productCategory = SampleFromDistribution(_distributions.ProductCategories, random);
         
+        // Determine nature based on product category
+        var nature = DetermineNature(productCategory);
+        
         // Get segments for this product category from mapping
         var segmentMapping = _productSegmentMapping.GetSegmentsForProduct(productCategory);
         SegmentInfo selectedSegment;
@@ -285,13 +288,13 @@ public class FacilityLifecycleManager
         }
         
         // Generate installment type, but set to empty if Nature is Revolving
-        var installmentType = customer.Nature == "Revolving" 
+        var installmentType = nature == "Revolving" 
             ? string.Empty 
             : SampleFromDistribution(_distributions.InstallmentTypes, random);
 
         var (grantDate, maturityDate) = GenerateDates(productCategory, period.PeriodEndDate, random);
         var limit = GenerateLimit(random);
-        var (collateralType, collateralValue) = GenerateCollateral(customer.Nature, productCategory, limit, random);
+        var (collateralType, collateralValue) = GenerateCollateral(nature, productCategory, limit, random);
         
         var baseInterestRate = GenerateBaseInterestRate(selectedSegment.PdSegment, random);
 
@@ -305,7 +308,7 @@ public class FacilityLifecycleManager
             selectedSegment.LgdSegment,
             customer.Industry,
             customer.EarningType,
-            customer.Nature,
+            nature,
             grantDate,
             maturityDate,
             installmentType,
@@ -314,6 +317,91 @@ public class FacilityLifecycleManager
             collateralValue,
             baseInterestRate,
             period.PeriodKey);
+    }
+
+    /// <summary>
+    /// Determines the nature based on product category.
+    /// Returns 'Revolving' for Credit Cards and Overdraft, 'Non-Revolving' for all others.
+    /// </summary>
+    private static string DetermineNature(string productCategory)
+    {
+        var upperCategory = productCategory.ToUpperInvariant();
+        return upperCategory is "CREDIT CARD" or "CREDIT CARDS" or "OVERDRAFT" 
+            ? "Revolving" 
+            : "Non-Revolving";
+    }
+
+    private static (DateTime grantDate, DateTime maturityDate) GenerateDates(string productCategory, DateTime referenceDate, Random random)
+    {
+        var daysBeforeGrant = random.Next(30, 1825);
+        var grantDate = referenceDate.AddDays(-daysBeforeGrant);
+
+        var tenorDays = productCategory.ToUpperInvariant() switch
+        {
+            "TERM LOAN" => random.Next(365, 3650), // 1-10 years
+            "MORTGAGE" => random.Next(1825, 10950), // 5-30 years
+            "PERSONAL LOAN" => random.Next(180, 1095), // 6 months to 3 years
+            "CREDIT CARD" => 0, // Revolving
+            "CREDIT CARDS" => 0, // Revolving (alternative name)
+            "OVERDRAFT" => random.Next(30, 365), // 1 month to 1 year
+            "BULLET" => random.Next(90, 365), // 3 months to 1 year
+            "LEASE" => random.Next(365, 1825), // 1-5 years
+            "LEASING" => random.Next(365, 1825), // 1-5 years (alternative name)
+            "HOUSING LOAN" => random.Next(1825, 10950), // 5-30 years
+            "GOLD LOAN" => random.Next(180, 730), // 6 months to 2 years
+            "SHORT TERM LOAN" => GenerateShortTermLoanTenor(random), // Special handling
+            _ => random.Next(365, 1825) // Default 1-5 years
+        };
+
+        var maturityDate = tenorDays == 0 ? grantDate.AddYears(99) : grantDate.AddDays(tenorDays);
+        return (grantDate, maturityDate);
+    }
+
+    /// <summary>
+    /// Generates tenor for Short Term Loans with realistic distribution:
+    /// - Majority (95%) settle within 1 year (30-365 days)
+    /// - Rare cases (5%) extend to 2-3 years due to non-settlement
+    /// </summary>
+    private static int GenerateShortTermLoanTenor(Random random)
+    {
+        // 95% of Short Term Loans should have tenor within 1 year
+        if (random.NextDouble() < 0.95)
+        {
+            // Most loans: 1 month to 1 year
+            return random.Next(30, 366);
+        }
+        else
+        {
+            // Rare cases: Extended loans 1-3 years (customer didn't settle on time)
+            return random.Next(366, 1096); // 1-3 years
+        }
+    }
+
+    private decimal GenerateLimit(Random random)
+    {
+        var logMin = Math.Log((double)_amounts.LimitMin);
+        var logMax = Math.Log((double)_amounts.LimitMax);
+        var logValue = logMin + random.NextDouble() * (logMax - logMin);
+        return Math.Round((decimal)Math.Exp(logValue), 2);
+    }
+
+    private (decimal totalOS, decimal undisbursedAmount) GenerateInitialAmounts(decimal limit, Random random)
+    {
+        var osFraction = Math.Max(0, Math.Min(1, 
+            _amounts.TotalOsFractionMean + (random.NextDouble() - 0.5) * 2 * _amounts.TotalOsFractionStdDev));
+        var totalOS = Math.Round(limit * (decimal)osFraction, 2);
+
+        var remainingLimit = limit - totalOS;
+        var undisbursedFraction = Math.Max(0, Math.Min(1,
+            _amounts.UndisbursedFractionMean + (random.NextDouble() - 0.5) * 2 * _amounts.UndisbursedFractionStdDev));
+        var undisbursedAmount = Math.Round(remainingLimit * (decimal)undisbursedFraction, 2);
+
+        if (totalOS + undisbursedAmount > limit)
+        {
+            undisbursedAmount = limit - totalOS;
+        }
+
+        return (totalOS, undisbursedAmount);
     }
 
     /// <summary>
@@ -420,77 +508,12 @@ public class FacilityLifecycleManager
         return false;
     }
 
-    private static (DateTime grantDate, DateTime maturityDate) GenerateDates(string productCategory, DateTime referenceDate, Random random)
+    private static double SampleNormal(Random random, double mean, double stdDev)
     {
-        var daysBeforeGrant = random.Next(30, 1825);
-        var grantDate = referenceDate.AddDays(-daysBeforeGrant);
-
-        var tenorDays = productCategory.ToUpperInvariant() switch
-        {
-            "TERM LOAN" => random.Next(365, 3650), // 1-10 years
-            "MORTGAGE" => random.Next(1825, 10950), // 5-30 years
-            "PERSONAL LOAN" => random.Next(180, 1095), // 6 months to 3 years
-            "CREDIT CARD" => 0, // Revolving
-            "CREDIT CARDS" => 0, // Revolving (alternative name)
-            "OVERDRAFT" => random.Next(30, 365), // 1 month to 1 year
-            "BULLET" => random.Next(90, 365), // 3 months to 1 year
-            "LEASE" => random.Next(365, 1825), // 1-5 years
-            "LEASING" => random.Next(365, 1825), // 1-5 years (alternative name)
-            "HOUSING LOAN" => random.Next(1825, 10950), // 5-30 years
-            "GOLD LOAN" => random.Next(180, 730), // 6 months to 2 years
-            "SHORT TERM LOAN" => GenerateShortTermLoanTenor(random), // Special handling
-            _ => random.Next(365, 1825) // Default 1-5 years
-        };
-
-        var maturityDate = tenorDays == 0 ? grantDate.AddYears(99) : grantDate.AddDays(tenorDays);
-        return (grantDate, maturityDate);
-    }
-
-    /// <summary>
-    /// Generates tenor for Short Term Loans with realistic distribution:
-    /// - Majority (95%) settle within 1 year (30-365 days)
-    /// - Rare cases (5%) extend to 2-3 years due to non-settlement
-    /// </summary>
-    private static int GenerateShortTermLoanTenor(Random random)
-    {
-        // 95% of Short Term Loans should have tenor within 1 year
-        if (random.NextDouble() < 0.95)
-        {
-            // Most loans: 1 month to 1 year
-            return random.Next(30, 366);
-        }
-        else
-        {
-            // Rare cases: Extended loans 1-3 years (customer didn't settle on time)
-            return random.Next(366, 1096); // 1-3 years
-        }
-    }
-
-    private decimal GenerateLimit(Random random)
-    {
-        var logMin = Math.Log((double)_amounts.LimitMin);
-        var logMax = Math.Log((double)_amounts.LimitMax);
-        var logValue = logMin + random.NextDouble() * (logMax - logMin);
-        return Math.Round((decimal)Math.Exp(logValue), 2);
-    }
-
-    private (decimal totalOS, decimal undisbursedAmount) GenerateInitialAmounts(decimal limit, Random random)
-    {
-        var osFraction = Math.Max(0, Math.Min(1, 
-            _amounts.TotalOsFractionMean + (random.NextDouble() - 0.5) * 2 * _amounts.TotalOsFractionStdDev));
-        var totalOS = Math.Round(limit * (decimal)osFraction, 2);
-
-        var remainingLimit = limit - totalOS;
-        var undisbursedFraction = Math.Max(0, Math.Min(1,
-            _amounts.UndisbursedFractionMean + (random.NextDouble() - 0.5) * 2 * _amounts.UndisbursedFractionStdDev));
-        var undisbursedAmount = Math.Round(remainingLimit * (decimal)undisbursedFraction, 2);
-
-        if (totalOS + undisbursedAmount > limit)
-        {
-            undisbursedAmount = limit - totalOS;
-        }
-
-        return (totalOS, undisbursedAmount);
+        var u1 = 1.0 - random.NextDouble();
+        var u2 = 1.0 - random.NextDouble();
+        var randStdNormal = Math.Sqrt(-2.0 * Math.Log(u1)) * Math.Sin(2.0 * Math.PI * u2);
+        return mean + stdDev * randStdNormal;
     }
 
     private int GenerateInitialDpd(Random random)
@@ -579,14 +602,6 @@ public class FacilityLifecycleManager
         };
 
         return (rescheduled, restructured, timesRestructured, upgraded, individuallyImpaired, bucketing);
-    }
-
-    private static double SampleNormal(Random random, double mean, double stdDev)
-    {
-        var u1 = 1.0 - random.NextDouble();
-        var u2 = 1.0 - random.NextDouble();
-        var randStdNormal = Math.Sqrt(-2.0 * Math.Log(u1)) * Math.Sin(2.0 * Math.PI * u2);
-        return mean + stdDev * randStdNormal;
     }
 
     private static string SampleFromDistribution(Dictionary<string, double> distribution, Random random)

@@ -44,8 +44,11 @@ public class PeriodRowFactory
         
         var productCategory = SampleFromDistribution(_distributions.ProductCategories, random);
         
+        // Determine nature based on product category
+        var nature = DetermineNature(productCategory);
+        
         // Generate installment type, but set to empty if Nature is Revolving
-        var installmentType = customer.Nature == "Revolving" 
+        var installmentType = nature == "Revolving" 
             ? string.Empty 
             : SampleFromDistribution(_distributions.InstallmentTypes, random);
 
@@ -66,7 +69,7 @@ public class PeriodRowFactory
         var interestInSuspense = CalculateInterestInSuspense(totalOS, daysPastDue, random);
 
         // Generate collateral info
-        var (collateralType, collateralValue) = GenerateCollateral(customer.Nature, productCategory, limit, random);
+        var (collateralType, collateralValue) = GenerateCollateral(nature, productCategory, limit, random);
 
         // Generate risk flags based on DPD and other factors
         var (rescheduled, restructured, timesRestructured, upgraded, individuallyImpaired, bucketing) = 
@@ -82,7 +85,7 @@ public class PeriodRowFactory
             customer.SegmentForLGD,
             customer.Industry,
             customer.EarningType,
-            customer.Nature,
+            nature,
             grantDate,
             maturityDate,
             interestRate,
@@ -125,6 +128,18 @@ public class PeriodRowFactory
         return distribution.Keys.Last();
     }
 
+    /// <summary>
+    /// Determines the nature based on product category.
+    /// Returns 'Revolving' for Credit Cards and Overdraft, 'Non-Revolving' for all others.
+    /// </summary>
+    private static string DetermineNature(string productCategory)
+    {
+        var upperCategory = productCategory.ToUpperInvariant();
+        return upperCategory is "CREDIT CARD" or "CREDIT CARDS" or "OVERDRAFT" 
+            ? "Revolving" 
+            : "Non-Revolving";
+    }
+
     private (DateTime grantDate, DateTime maturityDate) GenerateDates(string productCategory, string periodKey, Random random)
     {
         // Parse period to get reference date
@@ -140,9 +155,13 @@ public class PeriodRowFactory
             "TERM LOAN" => random.Next(365, 3650), // 1-10 years
             "MORTGAGE" => random.Next(1825, 10950), // 5-30 years
             "PERSONAL LOAN" => random.Next(180, 1095), // 6 months to 3 years
-            "CREDIT CARD" => 0, // Revolving
+            "CREDIT CARD" or "CREDIT CARDS" => 0, // Revolving
             "OVERDRAFT" => random.Next(30, 365), // 1 month to 1 year
             "BULLET" => random.Next(90, 365), // 3 months to 1 year
+            "SHORT TERM LOAN" => random.Next(30, 365), // 1 month to 1 year
+            "LEASE" or "LEASING" => random.Next(365, 1825), // 1-5 years
+            "HOUSING LOAN" => random.Next(1825, 10950), // 5-30 years
+            "GOLD LOAN" => random.Next(180, 730), // 6 months to 2 years
             _ => random.Next(365, 1825) // Default 1-5 years
         };
 
