@@ -358,8 +358,39 @@ public class FacilityLifecycleManager
             return true;
         }
 
-        // Short-term products have higher settlement probability
-        if (_qaRules.ShortTermProducts.Contains(master.ProductCategory.ToUpperInvariant()))
+        // Special handling for Short Term Loan - aggressive settlement after 1 year
+        if (master.ProductCategory.Equals("Short Term Loan", StringComparison.OrdinalIgnoreCase))
+        {
+            var periodsSinceGrant = CalculatePeriodsBetween(master.StartPeriod, currentPeriod.PeriodKey, currentPeriod.Frequency);
+            var periodsInOneYear = GetPeriodsInOneYear(currentPeriod.Frequency);
+            
+            // After 1 year, 95% should settle (matching the tenor distribution)
+            if (periodsSinceGrant >= periodsInOneYear)
+            {
+                if (random.NextDouble() < 0.95)
+                {
+                    return true;
+                }
+            }
+            
+            // After 2 years, force settlement for remaining facilities
+            if (periodsSinceGrant >= periodsInOneYear * 2)
+            {
+                if (random.NextDouble() < 0.98)
+                {
+                    return true;
+                }
+            }
+            
+            // After 3 years, force all to settle
+            if (periodsSinceGrant >= periodsInOneYear * 3)
+            {
+                return true;
+            }
+        }
+
+        // Short-term products (general rule) have higher settlement probability
+        if (_qaRules.ShortTermProducts.Contains(master.ProductCategory, StringComparer.OrdinalIgnoreCase))
         {
             var periodsSinceGrant = CalculatePeriodsBetween(master.StartPeriod, currentPeriod.PeriodKey, currentPeriod.Frequency);
             if (periodsSinceGrant >= GetPeriodsInOneYear(currentPeriod.Frequency))
@@ -396,18 +427,43 @@ public class FacilityLifecycleManager
 
         var tenorDays = productCategory.ToUpperInvariant() switch
         {
-            "TERM LOAN" => random.Next(365, 3650),
-            "MORTGAGE" => random.Next(1825, 10950),
-            "PERSONAL LOAN" => random.Next(180, 1095),
-            "CREDIT CARD" => 0,
-            "OVERDRAFT" => random.Next(30, 365),
-            "BULLET" => random.Next(90, 365),
-            "LEASING" => random.Next(365, 1825),
-            _ => random.Next(365, 1825)
+            "TERM LOAN" => random.Next(365, 3650), // 1-10 years
+            "MORTGAGE" => random.Next(1825, 10950), // 5-30 years
+            "PERSONAL LOAN" => random.Next(180, 1095), // 6 months to 3 years
+            "CREDIT CARD" => 0, // Revolving
+            "CREDIT CARDS" => 0, // Revolving (alternative name)
+            "OVERDRAFT" => random.Next(30, 365), // 1 month to 1 year
+            "BULLET" => random.Next(90, 365), // 3 months to 1 year
+            "LEASE" => random.Next(365, 1825), // 1-5 years
+            "LEASING" => random.Next(365, 1825), // 1-5 years (alternative name)
+            "HOUSING LOAN" => random.Next(1825, 10950), // 5-30 years
+            "GOLD LOAN" => random.Next(180, 730), // 6 months to 2 years
+            "SHORT TERM LOAN" => GenerateShortTermLoanTenor(random), // Special handling
+            _ => random.Next(365, 1825) // Default 1-5 years
         };
 
         var maturityDate = tenorDays == 0 ? grantDate.AddYears(99) : grantDate.AddDays(tenorDays);
         return (grantDate, maturityDate);
+    }
+
+    /// <summary>
+    /// Generates tenor for Short Term Loans with realistic distribution:
+    /// - Majority (95%) settle within 1 year (30-365 days)
+    /// - Rare cases (5%) extend to 2-3 years due to non-settlement
+    /// </summary>
+    private static int GenerateShortTermLoanTenor(Random random)
+    {
+        // 95% of Short Term Loans should have tenor within 1 year
+        if (random.NextDouble() < 0.95)
+        {
+            // Most loans: 1 month to 1 year
+            return random.Next(30, 366);
+        }
+        else
+        {
+            // Rare cases: Extended loans 1-3 years (customer didn't settle on time)
+            return random.Next(366, 1096); // 1-3 years
+        }
     }
 
     private decimal GenerateLimit(Random random)
