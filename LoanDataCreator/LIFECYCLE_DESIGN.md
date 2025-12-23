@@ -40,6 +40,7 @@ Facilities settle (are removed) based on:
 
 ### 6. Financial Field Evolution
 - **Limit**: Remains constant across periods (enforced by QA rules)
+- **Interest Rate**: Remains constant across periods (uses BaseInterestRate from FacilityMaster)
 - **Total OS**: Evolves with small changes (±15% max per period)
 - **Rare negative OS** values allowed (0.1% probability, max 5% of limit)
 - **Undisbursed Amount**: Recalculated based on remaining limit
@@ -120,12 +121,15 @@ New fields added to existing section:
 {
   "Amounts": {
     // ...existing fields...
+    "InterestRateVolatility": 0.002,         // NOTE: No longer used - interest rates are now constant per facility
     "NegativeOsProbability": 0.001,          // 0.1% chance of negative OS
     "NegativeOsMaxFraction": 0.05,           // Max negative OS = 5% of limit
     "TotalOsMaxChangePerPeriod": 0.15        // Max ±15% change per period
   }
 }
 ```
+
+**Note**: The `InterestRateVolatility` configuration is no longer used in lifecycle-consistent generation. Interest rates remain constant for each facility across all periods, using the `BaseInterestRate` from `FacilityMaster`. This ensures consistency in line with real banking operations where loan interest rates are fixed at origination.
 
 ## Architecture
 

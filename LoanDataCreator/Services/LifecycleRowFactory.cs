@@ -72,8 +72,9 @@ public class LifecycleRowFactory
             (totalOS, undisbursedAmount) = EvolveAmounts(master.Limit, previousState.TotalOS, previousState.UndisbursedAmount, random);
         }
 
-        // Calculate interest rate (small variation from base)
-        var interestRate = CalculateInterestRate(master.BaseInterestRate, period.PeriodKey, random);
+        // Use the constant BaseInterestRate from FacilityMaster
+        // This ensures the same facility has the same interest rate across all periods
+        var interestRate = master.BaseInterestRate;
 
         // Calculate interest in suspense based on DPD
         var interestInSuspense = CalculateInterestInSuspense(totalOS, daysPastDue, random);
@@ -209,16 +210,8 @@ public class LifecycleRowFactory
         return (newTotalOS, undisbursedAmount);
     }
 
-    private decimal CalculateInterestRate(decimal baseRate, string periodKey, Random random)
-    {
-        // Add small period-based volatility
-        var periodHash = Math.Abs(periodKey.GetHashCode()) % 1000;
-        var periodVolatility = (periodHash / 1000.0 - 0.5) * 2 * _amounts.InterestRateVolatility;
-        
-        var rate = (double)baseRate + periodVolatility + (random.NextDouble() - 0.5) * 0.005;
-        
-        return Math.Round((decimal)Math.Max(0.001, rate), 4);
-    }
+    // REMOVED: CalculateInterestRate method is no longer needed
+    // Interest rate is now taken directly from FacilityMaster.BaseInterestRate
 
     private decimal CalculateInterestInSuspense(decimal totalOS, int daysPastDue, Random random)
     {

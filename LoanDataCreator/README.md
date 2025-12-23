@@ -210,28 +210,34 @@ The generated CSV files contain the following columns in exact order:
 1. Customer Number
 2. Facility number
 3. Branch
-4. Product category
-5. Segment
-6. Industry
-7. Earning Type
-8. Nature
-9. Grant date (yyyy-MM-dd)
-10. Maturity date/ Expiry Date (yyyy-MM-dd)
-11. Interest Rate
-12. Installment Type (Monthly/ Quarterly/ Weekly/ Daily/ Annually/ Bullet)
-13. Days Past Due
-14. Total OS
-15. Undisbursed Amount
-16. Interest in Suspense
-17. Collateral Type
-18. Collateral Value
-19. Rescheduled (Yes/No)
-20. Restructured (Yes/No)
-21. No. of Times Restructured
-22. Upgraded to delinquency bucket (Yes/No)
-23. Individually Impaired (Yes/No)
-24. Bucketing in Individual Assessment
-25. Period
+4. Region
+5. Product category
+6. Segment
+7. Segment for LGD
+8. Industry
+9. Earning Type
+10. Nature
+11. Grant date (yyyy-MM-dd)
+12. Maturity date/ Expiry Date (yyyy-MM-dd)
+13. Interest Rate
+14. No. of Installments in Arrears
+15. Total Remaining Installments (Including Installments in Arrears)
+16. Installments Value
+17. Installment Type (Monthly/ Quarterly/ Weekly/ Daily/ Annually/ Bullet)
+18. Days Past Due
+19. Limit
+20. Total OS
+21. Undisbursed Amount
+22. Interest in Suspense
+23. Collateral Type
+24. Collateral Value
+25. Rescheduled (Yes/No)
+26. Restructured (Yes/No)
+27. No. of Times Restructured
+28. Upgraded to delinquency bucket (Yes/No)
+29. Individually Impaired (Yes/No)
+30. Bucketing in Individual Assessment
+31. Period
 
 ## Data Consistency Rules
 
@@ -251,9 +257,10 @@ The generated CSV files contain the following columns in exact order:
 
 ### Financial Constraints
 - **Limit** remains constant across periods for same facility
+- **Interest Rate** remains constant across periods for same facility
 - Grant Date ? Maturity Date
 - Limit ? Total OS + Undisbursed Amount (in most cases)
-- Interest rates vary by segment with controlled volatility
+- Interest rates vary by segment but remain constant per facility
 - **Total OS** evolves with small changes (max ±15% per period)
 - **Rare negative OS** values allowed (0.1% probability)
 - **Interest in Suspense** depends on DPD (not random)
@@ -337,8 +344,12 @@ grep "CUST00000001" Output/Monthly/*/PD_*.csv
 # Check same facility appears across periods
 grep "FAC0000000101" Output/Monthly/*/PD_*.csv
 
-# Check DPD evolution (column 13)
-grep "FAC0000000101" Output/Monthly/*/PD_*.csv | cut -d',' -f13
+# Check DPD evolution (column 18)
+grep "FAC0000000101" Output/Monthly/*/PD_*.csv | cut -d',' -f18
+
+# Check interest rate remains constant (column 13)
+grep "FAC0000000101" Output/Monthly/*/PD_*.csv | cut -d',' -f13 | sort -u
+# Should return only ONE value (same interest rate across all periods)
 ```
 
 ## Architecture
@@ -385,6 +396,7 @@ To validate generated files:
 5. ? **NEW**: Verify same customer/facility appears across periods
 6. ? **NEW**: Check DPD evolves logically (not random)
 7. ? **NEW**: Confirm Limit remains constant per facility
+8. ? **NEW**: Confirm Interest Rate remains constant per facility
 
 ## Testing
 

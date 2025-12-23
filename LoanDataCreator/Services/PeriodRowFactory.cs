@@ -140,34 +140,83 @@ public class PeriodRowFactory
             : "Non-Revolving";
     }
 
-    private (DateTime grantDate, DateTime maturityDate) GenerateDates(string productCategory, string periodKey, Random random)
+    private (DateTime grantDate, DateTime? maturityDate) GenerateDates(string productCategory, string periodKey, Random random)
     {
-        // Parse period to get reference date
-        var referenceDate = ParsePeriodToDate(periodKey);
+        // Parse period to get portfolio date (period end date)
+        var portfolioDate = ParsePeriodToDate(periodKey);
         
-        // Generate grant date within reasonable range before reference date
-        var daysBeforeGrant = random.Next(30, 1825); // 1 month to 5 years before
-        var grantDate = referenceDate.AddDays(-daysBeforeGrant);
-
-        // Generate maturity based on product category
+        // Generate maturity based on product category (tenor in days)
+        // CONSTRAINT: Maximum tenor is 10 years (3650 days)
         var tenorDays = productCategory.ToUpperInvariant() switch
         {
             "TERM LOAN" => random.Next(365, 3650), // 1-10 years
-            "MORTGAGE" => random.Next(1825, 10950), // 5-30 years
-            "PERSONAL LOAN" => random.Next(180, 1095), // 6 months to 3 years
+            "MORTGAGE" => random.Next(1825, 3650), // 5-10 years (capped at 10 years)
+            "PERSONAL LOAN" => random.Next(180, 1095), // 6 months - 3 years
             "CREDIT CARD" or "CREDIT CARDS" => 0, // Revolving
-            "OVERDRAFT" => random.Next(30, 365), // 1 month to 1 year
-            "BULLET" => random.Next(90, 365), // 3 months to 1 year
-            "SHORT TERM LOAN" => random.Next(30, 365), // 1 month to 1 year
+            "OVERDRAFT" => random.Next(30, 365), // 1 month - 1 year
+            "BULLET" => random.Next(90, 365), // 3 months - 1 year
+            "SHORT TERM LOAN" => random.Next(30, 365), // 1 month - 1 year
             "LEASE" or "LEASING" => random.Next(365, 1825), // 1-5 years
-            "HOUSING LOAN" => random.Next(1825, 10950), // 5-30 years
-            "GOLD LOAN" => random.Next(180, 730), // 6 months to 2 years
+            "HOUSING LOAN" => random.Next(1825, 3650), // 5-10 years (capped at 10 years)
+            "GOLD LOAN" => random.Next(180, 730), // 6 months - 2 years
             _ => random.Next(365, 1825) // Default 1-5 years
         };
 
-        var maturityDate = tenorDays == 0 ? grantDate.AddYears(99) : grantDate.AddDays(tenorDays);
+        // For revolving products, set maturity to Grant Date + 10 years (maximum allowed)
+        // BUT: 1% of Revolving facilities should have empty maturity date
+        if (tenorDays == 0)
+        {
+            // Grant date: 1-5 years before portfolio date
+            var daysBeforePortfolio = random.Next(365, 1825);
+            var grantDate = portfolioDate.AddDays(-daysBeforePortfolio);
+            
+            // 1% of Revolving facilities have empty maturity date
+            if (random.NextDouble() < 0.01)
+            {
+                return (grantDate, null);
+            }
+            
+            var maturityDate = grantDate.AddYears(10); // Cap at 10 years instead of 99
+            return (grantDate, maturityDate);
+        }
 
-        return (grantDate, maturityDate);
+        // Ensure tenor does not exceed 10 years (3650 days)
+        tenorDays = Math.Min(tenorDays, 3650);
+
+        // Calculate grant date to ensure: Grant Date < Maturity Date <= Portfolio Date
+        // We want grant date to be reasonably before the portfolio date
+        // Minimum: tenor + 30 days before portfolio date to ensure maturity fits
+        var minDaysBeforePortfolio = tenorDays + 30;
+        var maxDaysBeforePortfolio = Math.Min(3650, tenorDays + 1825); // Up to tenor + 5 years, max 10 years total
+
+        // Ensure we have a valid range
+        if (minDaysBeforePortfolio >= maxDaysBeforePortfolio)
+        {
+            maxDaysBeforePortfolio = minDaysBeforePortfolio + 365; // Add at least 1 year range
+        }
+
+        // Calculate grant date
+        var daysBeforeGrant = random.Next(minDaysBeforePortfolio, maxDaysBeforePortfolio);
+        var grantDate2 = portfolioDate.AddDays(-daysBeforeGrant);
+        var maturityDate2 = grantDate2.AddDays(tenorDays);
+
+        // Safety check: Ensure maturity date is on or before portfolio date
+        if (maturityDate2 > portfolioDate)
+        {
+            // Adjust grant date backwards to fit the constraint
+            var daysToAdjust = (maturityDate2 - portfolioDate).Days + 1;
+            grantDate2 = grantDate2.AddDays(-daysToAdjust);
+            maturityDate2 = grantDate2.AddDays(tenorDays);
+        }
+
+        // Final validation: Ensure Maturity Date <= Grant Date + 10 years
+        var maxMaturityDate = grantDate2.AddYears(10);
+        if (maturityDate2 > maxMaturityDate)
+        {
+            maturityDate2 = maxMaturityDate;
+        }
+
+        return (grantDate2, maturityDate2);
     }
 
     private static DateTime ParsePeriodToDate(string periodKey)

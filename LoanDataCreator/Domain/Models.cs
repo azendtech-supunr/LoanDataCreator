@@ -27,7 +27,7 @@ public record FacilityMaster(
     string EarningType,
     string Nature,
     DateTime GrantDate,
-    DateTime MaturityDate,
+    DateTime? MaturityDate,  // UPDATED: Made nullable to support empty maturity dates for Revolving
     string InstallmentType,
     decimal Limit,
     string CollateralType,
@@ -67,7 +67,7 @@ public record PeriodRow(
     string EarningType,
     string Nature,
     DateTime GrantDate,
-    DateTime MaturityDate,
+    DateTime? MaturityDate,  // UPDATED: Made nullable to support empty maturity dates for Revolving
     decimal InterestRate,
     string NoOfInstallmentsInArrears,
     string TotalRemainingInstallments,

@@ -108,7 +108,7 @@ public class CsvWriterService
             EscapeCsvField(row.EarningType),
             EscapeCsvField(row.Nature),
             row.GrantDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
-            row.MaturityDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            row.MaturityDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? string.Empty,
             row.InterestRate.ToString(CultureInfo.InvariantCulture),
             EscapeCsvField(row.NoOfInstallmentsInArrears),
             EscapeCsvField(row.TotalRemainingInstallments),
