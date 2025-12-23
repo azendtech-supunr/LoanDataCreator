@@ -32,6 +32,9 @@ public class FacilityLifecycleManager
     // Track next facility index per customer for generating new facilities
     private readonly Dictionary<int, int> _nextFacilityIndexByCustomer = new();
 
+    // Track the highest customer ID used so far (for adding new customers)
+    private int _maxCustomerId = 0;
+
     public FacilityLifecycleManager(
         SeedDeriver seedDeriver,
         CustomerFactory customerFactory,
@@ -82,6 +85,9 @@ public class FacilityLifecycleManager
             _nextFacilityIndexByCustomer[customerId] = customer.FacilityCount + 1;
         }
 
+        // Track the highest customer ID used
+        _maxCustomerId = customerCount;
+
         _activeFacilitiesByPeriod[period.PeriodKey] = activeFacilities;
         _facilityStatesByPeriod[period.PeriodKey] = periodStates;
     }
@@ -89,6 +95,7 @@ public class FacilityLifecycleManager
     /// <summary>
     /// Evolves facilities from previous period to current period.
     /// Handles facility settlements, new facility creation, and state transitions.
+    /// Adds 2 new customers each year during January.
     /// </summary>
     public void EvolveToPeriod(PeriodInfo currentPeriod, PeriodInfo previousPeriod, int customerCount)
     {
@@ -142,7 +149,38 @@ public class FacilityLifecycleManager
             }
         }
 
-        // Step 2: Create new facilities for some customers
+        // Step 2: Add 2 new customers each year during January
+        if (IsJanuaryPeriod(currentPeriod))
+        {
+            for (var i = 0; i < 2; i++)
+            {
+                _maxCustomerId++; // Increment to get new customer ID
+                var newCustomerId = _maxCustomerId;
+                var newCustomer = _customerFactory.CreateCustomer(newCustomerId);
+                
+                // Create facilities for the new customer
+                for (var facilityIndex = 1; facilityIndex <= newCustomer.FacilityCount; facilityIndex++)
+                {
+                    var facilityNumber = _customerFactory.CreateFacilityNumber(newCustomerId, facilityIndex);
+                    
+                    // Create new facility master
+                    var newFacilityMaster = CreateFacilityMaster(newCustomerId, facilityIndex, newCustomer, currentPeriod);
+                    _facilityMasters[facilityNumber] = newFacilityMaster;
+                    
+                    // Create initial state for new facility
+                    var initialState = CreateInitialFacilityState(newFacilityMaster, currentPeriod);
+                    currentStates[facilityNumber] = initialState;
+                    
+                    // Add to active facilities
+                    currentActiveFacilities.Add(facilityNumber);
+                }
+                
+                // Track next facility index for this new customer
+                _nextFacilityIndexByCustomer[newCustomerId] = newCustomer.FacilityCount + 1;
+            }
+        }
+
+        // Step 3: Create new facilities for existing customers (if configured)
         var newFacilityCount = (int)(customerCount * _lifecycle.NewFacilityRate);
         var customerIdsForNewFacilities = Enumerable.Range(1, customerCount)
             .OrderBy(_ => random.Next())
@@ -178,6 +216,20 @@ public class FacilityLifecycleManager
 
         _activeFacilitiesByPeriod[currentPeriod.PeriodKey] = currentActiveFacilities;
         _facilityStatesByPeriod[currentPeriod.PeriodKey] = currentStates;
+    }
+
+    /// <summary>
+    /// Determines if the current period is January (for any frequency).
+    /// </summary>
+    private static bool IsJanuaryPeriod(PeriodInfo period)
+    {
+        return period.Frequency switch
+        {
+            "Monthly" => period.PeriodKey.EndsWith("-01"), // e.g., "2021-01", "2022-01"
+            "Quarterly" => period.PeriodKey.EndsWith("Q1"), // e.g., "2021Q1", "2022Q1"
+            "Yearly" => true, // All yearly periods count as January for this purpose
+            _ => false
+        };
     }
 
     /// <summary>
@@ -359,8 +411,8 @@ public class FacilityLifecycleManager
         if (tenorDays == 0)
         {
             // Grant date: 1-5 years before portfolio date
-            var daysBeforePortfolio = random.Next(365, 1825);
-            var grantDate = portfolioDate.AddDays(-daysBeforePortfolio);
+            var revolvingDaysBeforePortfolio = random.Next(365, 1825);
+            var grantDate = portfolioDate.AddDays(-revolvingDaysBeforePortfolio);
             
             // 1% of Revolving facilities have empty maturity date
             if (random.NextDouble() < 0.01)
@@ -375,31 +427,17 @@ public class FacilityLifecycleManager
         // Ensure tenor does not exceed 10 years (3650 days)
         tenorDays = Math.Min(tenorDays, 3650);
 
-        // Calculate grant date to ensure: Grant Date < Maturity Date <= Portfolio Date
-        // We want grant date to be reasonably before the portfolio date
-        // Minimum: tenor + 30 days before portfolio date to ensure maturity fits
-        var minDaysBeforePortfolio = tenorDays + 30;
-        var maxDaysBeforePortfolio = Math.Min(3650, tenorDays + 1825); // Up to tenor + 5 years, max 10 years total
-
-        // Ensure we have a valid range
-        if (minDaysBeforePortfolio >= maxDaysBeforePortfolio)
-        {
-            maxDaysBeforePortfolio = minDaysBeforePortfolio + 365; // Add at least 1 year range
-        }
-
+        // CRITICAL FIX: Grant date should be in the past, but maturity date should extend into the future
+        // Calculate grant date: between 6 months and 3 years before portfolio date
+        var minDaysBeforePortfolio = 180; // At least 6 months before portfolio date
+        var maxDaysBeforePortfolio = Math.Min(1095, 3650); // Up to 3 years before portfolio date
+        
         // Calculate grant date
-        var daysBeforeGrant = random.Next(minDaysBeforePortfolio, maxDaysBeforePortfolio);
-        var grantDate2 = portfolioDate.AddDays(-daysBeforeGrant);
+        var daysBeforePortfolio = random.Next(minDaysBeforePortfolio, maxDaysBeforePortfolio + 1);
+        var grantDate2 = portfolioDate.AddDays(-daysBeforePortfolio);
+        
+        // Maturity date = Grant date + Tenor
         var maturityDate2 = grantDate2.AddDays(tenorDays);
-
-        // Safety check: Ensure maturity date is on or before portfolio date
-        if (maturityDate2 > portfolioDate)
-        {
-            // Adjust grant date backwards to fit the constraint
-            var daysToAdjust = (maturityDate2 - portfolioDate).Days + 1;
-            grantDate2 = grantDate2.AddDays(-daysToAdjust);
-            maturityDate2 = grantDate2.AddDays(tenorDays);
-        }
 
         // Final validation: Ensure Maturity Date <= Grant Date + 10 years
         var maxMaturityDate = grantDate2.AddYears(10);
@@ -492,60 +530,67 @@ public class FacilityLifecycleManager
 
     /// <summary>
     /// Determines if a facility should settle in the current period based on lifecycle rules.
+    /// SPECIAL RULE: Short Term Loans MUST settle after exactly 1 year (maximum).
+    /// OTHER FACILITIES: Must remain active for at least 5 years before any settlement.
     /// </summary>
     private bool ShouldSettleFacility(FacilityMaster master, FacilityState previousState, PeriodInfo currentPeriod, Random random)
     {
+        // CRITICAL: Facilities should NEVER settle in the same period they were created
+        if (master.StartPeriod == currentPeriod.PeriodKey)
+        {
+            return false;
+        }
+
+        // Calculate periods since grant for settlement checks
+        var periodsSinceGrant = CalculatePeriodsBetween(master.StartPeriod, currentPeriod.PeriodKey, currentPeriod.Frequency);
+        var periodsInOneYear = GetPeriodsInOneYear(currentPeriod.Frequency);
+        
+        // SPECIAL BUSINESS RULE: Short Term Loans MUST settle after completing 1 year
+        // Check both ProductCategory AND PdSegment to ensure it's truly a Short Term Loan
+        var isShortTermLoan = master.ProductCategory.Equals("Short Term Loan", StringComparison.OrdinalIgnoreCase) &&
+                              master.Segment.Equals("Short Term Loan", StringComparison.OrdinalIgnoreCase);
+        
+        if (isShortTermLoan)
+        {
+            // Short Term Loans settle after exactly 1 year (12 months for monthly frequency)
+            if (periodsSinceGrant >= periodsInOneYear)
+            {
+                return true; // MUST SETTLE - no exceptions
+            }
+            else
+            {
+                return false; // Cannot settle before 1 year
+            }
+        }
+        
+        // For all OTHER facilities: 5-year minimum retention rule applies
+        var periodsInFiveYears = periodsInOneYear * 5; // 60 months for monthly frequency
+        var hasCompletedFiveYears = periodsSinceGrant >= periodsInFiveYears;
+        
+        if (!hasCompletedFiveYears)
+        {
+            return false; // BLOCK ALL SETTLEMENTS before 5 years (except Short Term Loans)
+        }
+
+        // Beyond this point, non-Short Term Loan facility has completed at least 5 years
+        // Now normal settlement rules apply
+
         // Check if maturity date has passed (if maturity date exists)
         if (master.MaturityDate.HasValue && currentPeriod.PeriodEndDate >= master.MaturityDate.Value)
         {
             return true;
         }
 
-        // Special handling for Short Term Loan - aggressive settlement after 1 year
-        if (master.ProductCategory.Equals("Short Term Loan", StringComparison.OrdinalIgnoreCase))
+        // Short-term products (general rule) have higher settlement probability after 5 years
+        if (_qaRules.ShortTermProducts.Contains(master.ProductCategory, StringComparer.OrdinalIgnoreCase))
         {
-            var periodsSinceGrant = CalculatePeriodsBetween(master.StartPeriod, currentPeriod.PeriodKey, currentPeriod.Frequency);
-            var periodsInOneYear = GetPeriodsInOneYear(currentPeriod.Frequency);
-            
-            // After 1 year, 95% should settle (matching the tenor distribution)
-            if (periodsSinceGrant >= periodsInOneYear)
-            {
-                if (random.NextDouble() < 0.95)
-                {
-                    return true;
-                }
-            }
-            
-            // After 2 years, force settlement for remaining facilities
-            if (periodsSinceGrant >= periodsInOneYear * 2)
-            {
-                if (random.NextDouble() < 0.98)
-                {
-                    return true;
-                }
-            }
-            
-            // After 3 years, force all to settle
-            if (periodsSinceGrant >= periodsInOneYear * 3)
+            if (random.NextDouble() < _lifecycle.ShortTermSettlementProbability)
             {
                 return true;
             }
         }
 
-        // Short-term products (general rule) have higher settlement probability
-        if (_qaRules.ShortTermProducts.Contains(master.ProductCategory, StringComparer.OrdinalIgnoreCase))
-        {
-            var periodsSinceGrant = CalculatePeriodsBetween(master.StartPeriod, currentPeriod.PeriodKey, currentPeriod.Frequency);
-            if (periodsSinceGrant >= GetPeriodsInOneYear(currentPeriod.Frequency))
-            {
-                if (random.NextDouble() < _lifecycle.ShortTermSettlementProbability)
-                {
-                    return true;
-                }
-            }
-        }
-
-        // High DPD facilities are likely to settle (write-off)
+        // High DPD facilities are likely to settle (write-off) - only after 5 years
         if (previousState.DaysPastDue >= _lifecycle.SettlementDpdThreshold)
         {
             if (random.NextDouble() < _lifecycle.HighDpdSettlementProbability)
@@ -554,7 +599,7 @@ public class FacilityLifecycleManager
             }
         }
 
-        // Random settlement based on configured rate
+        // Random settlement based on configured rate - only after 5 years
         if (random.NextDouble() < _lifecycle.FacilitySettlementRate)
         {
             return true;

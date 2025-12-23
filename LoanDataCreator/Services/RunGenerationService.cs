@@ -142,6 +142,21 @@ public class RunGenerationService : BackgroundService
     /// </summary>
     private async Task GenerateWorkItemLifecycle(WorkItem workItem, PeriodInfo period, string? previousPeriodKey, CancellationToken cancellationToken)
     {
+        // Get active facility count for this period to show in log
+        var activeFacilities = _lifecycleManager.GetActiveFacilities(workItem.PeriodKey);
+        var facilityCount = activeFacilities.Count;
+        
+        if (workItem.Rows == -1)
+        {
+            _logger.LogInformation("Generating {FilePath} with ALL {FacilityCount:N0} active facilities", 
+                workItem.FilePath, facilityCount);
+        }
+        else
+        {
+            _logger.LogInformation("Generating {FilePath} with {Rows:N0} rows (out of {FacilityCount:N0} facilities)", 
+                workItem.FilePath, workItem.Rows, facilityCount);
+        }
+
         var rows = GenerateLifecycleRows(workItem, period, previousPeriodKey, cancellationToken);
         await _csvWriter.WriteCsvFileAsync(workItem.FilePath, rows, cancellationToken);
     }
@@ -162,10 +177,13 @@ public class RunGenerationService : BackgroundService
         // FIX: Shuffle facilities and iterate to ensure each facility appears at most once
         var shuffledFacilities = activeFacilities.OrderBy(_ => random.Next()).ToList();
         
+        // If RowsPerFile is -1, use all facilities. Otherwise, use the configured limit.
+        var targetRows = workItem.Rows == -1 ? shuffledFacilities.Count : workItem.Rows;
+        
         var generatedRows = 0;
         var facilityIndex = 0;
 
-        while (generatedRows < workItem.Rows && facilityIndex < shuffledFacilities.Count)
+        while (generatedRows < targetRows && facilityIndex < shuffledFacilities.Count)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -185,20 +203,24 @@ public class RunGenerationService : BackgroundService
             yield return row;
             generatedRows++;
 
-            // Log progress periodically
-            if (generatedRows % _generation.LogProgressEveryNRows == 0)
+            // Log progress periodically (only if LogProgressEveryNRows is positive)
+            if (_generation.LogProgressEveryNRows > 0 && generatedRows % _generation.LogProgressEveryNRows == 0)
             {
                 _logger.LogInformation("Generated {GeneratedRows:N0} / {TotalRows:N0} rows for {FilePath}",
-                    generatedRows, workItem.Rows, workItem.FilePath);
+                    generatedRows, targetRows, workItem.FilePath);
             }
         }
         
-        // Warn if we ran out of facilities before reaching target row count
-        if (generatedRows < workItem.Rows)
+        // Warn if we ran out of facilities before reaching target row count (only if not using all facilities)
+        if (workItem.Rows != -1 && generatedRows < workItem.Rows)
         {
             _logger.LogWarning("Only generated {GeneratedRows} rows out of {TargetRows} for {Period} - ran out of unique facilities. " +
                               "Consider reducing RowsPerFile or increasing CustomerCount/FacilitiesPerCustomer.",
                               generatedRows, workItem.Rows, workItem.PeriodKey);
+        }
+        else if (workItem.Rows == -1)
+        {
+            _logger.LogInformation("Generated all {GeneratedRows} active facilities for {Period}", generatedRows, workItem.PeriodKey);
         }
     }
 

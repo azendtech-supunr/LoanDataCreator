@@ -28,10 +28,14 @@ This document describes the lifecycle-consistent synthetic data generation model
 
 ### 4. Settlement Logic
 Facilities settle (are removed) based on:
-- **Maturity date** reached
-- **Short-term products** (BULLET, OVERDRAFT) settling after one year (95% probability)
-- **High DPD** (?180 days) facilities settling with 30% probability
-- **Random settlement** at 5% base rate per period
+- **Maturity date** reached (applies to all products)
+- **Short Term Loan only**: Can settle early after 1 year (95% probability)
+- **All other products**: Cannot settle before completing at least 1 year
+- **After 1 year** (for non-Short Term Loan products):
+  - **Short-term products** (BULLET, OVERDRAFT) settling after one year (95% probability)
+  - **High DPD** (?180 days) facilities settling with 30% probability
+  - **Random settlement** at 2.5% base rate per period
+- **Important**: Facilities **never** settle in the same period they are created
 
 ### 5. New Facility Creation
 - Each period, ~3% of customers receive new facilities

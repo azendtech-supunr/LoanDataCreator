@@ -245,9 +245,12 @@ The generated CSV files contain the following columns in exact order:
 - **Customer Numbers** remain constant across all periods
 - **Facility Numbers** remain constant and linked to same customer
 - **Master Data** (Product, Segment, Grant Date, Maturity Date, Limit) constant per facility
+- **Grant Date**: Set 6 months to 3 years before the portfolio date (facility exists before portfolio observation)
+- **Maturity Date**: Extends into the future based on product tenor (facilities survive beyond creation period)
+- **5-Year Minimum**: ALL facilities MUST remain active for at least 5 years (60 months) - NO EXCEPTIONS
 - **DPD** evolves realistically from previous period (not randomly regenerated)
-- **Facilities** settle based on maturity, DPD, or product type
-- **New facilities** added to portfolios over time
+- **Facilities** settle based on maturity, DPD, or product type (only after 5 years)
+- **New facilities** can be added to portfolios over time (configurable)
 
 ### Customer Consistency
 - Customer attributes (Segment, Industry, Earning Type, Nature) remain constant across all periods
@@ -302,10 +305,14 @@ Facility FAC0000000101:
 ```
 
 ### Settlement Scenarios
-1. **Maturity**: Facility reaches maturity date ? settles
-2. **Short-term**: BULLET loan after 1 year ? 95% chance to settle
-3. **High DPD**: Facility DPD ? 180 ? 30% chance to settle
-4. **Random**: Any facility ? 5% base settlement rate
+1. **5-Year Minimum**: ALL facilities MUST remain active for at least 5 years (60 months for monthly frequency)
+2. **After 5 Years**:
+   - **Maturity**: Facility reaches maturity date ? settles
+   - **Short Term Loan**: Can settle with configured probability
+   - **High DPD (?180)**: Can settle with configured probability
+   - **Random settlement**: Based on configured rate
+3. **Important**: Facilities **never** settle in the same period they are created
+4. **Configuration**: All settlement rates can be set to 0 for maximum retention
 
 ## Performance Tips
 
