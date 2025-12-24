@@ -30,11 +30,20 @@ public class DpdEvolutionService
     /// Returns new DPD value based on evolution rules.
     /// 
     /// Evolution logic:
-    /// - Improvement: DPD decreases (payment made or partial cure)
-    /// - Worsening: DPD increases by up to periodDaysIncrement (no payment, time passes)
-    /// - Stability: DPD increases by periodDaysIncrement (no payment, no cure)
+    /// - Improvement: DPD decreases (payment made clearing overdue days)
+    /// - Worsening: DPD increases by periodDaysIncrement (no payment, time passes)
+    /// - Stability: DPD increases by periodDaysIncrement (no payment, no change)
     /// 
     /// ENFORCED INVARIANT: newDpd ? previousDpd + periodDaysIncrement
+    /// 
+    /// Example (Monthly with 30-day periods):
+    /// - Month 01 DPD: 23
+    /// - Month 02 DPD: 23 + 30 = 53 (no payment)
+    /// 
+    /// Example (Payment scenario):
+    /// - Month 01 DPD: 120
+    /// - Payment clears 50 overdue days
+    /// - Month 02 DPD: 120 - 50 + 30 = 100
     /// </summary>
     public int EvolveDpd(int previousDpd, string facilityNumber, string currentPeriod, int periodDaysIncrement)
     {
@@ -61,24 +70,27 @@ public class DpdEvolutionService
 
         if (actionRoll < _evolution.ImprovementProbability)
         {
-            // DPD improves (decreases) - customer made payment or cured
-            // Improvement mean should be negative (e.g., -15 days)
-            var improvement = (int)Math.Round(SampleNormal(random, _evolution.ImprovementMean, _evolution.ImprovementStdDev));
-            var newDpd = previousDpd + improvement; // improvement is negative, so this decreases DPD
+            // DPD improves (decreases) - customer made payment clearing overdue days
+            // The payment amount reduces DPD, but time still passes (adding periodDaysIncrement)
             
-            // DPD can improve to 0 (full cure) or any positive value (partial payment)
+            // Improvement mean should be negative (e.g., -15 days represents payment amount)
+            // This represents the number of overdue days actually paid
+            var paymentAmount = (int)Math.Round(Math.Abs(SampleNormal(random, Math.Abs(_evolution.ImprovementMean), _evolution.ImprovementStdDev)));
+            
+            // Apply the formula: New DPD = Previous DPD - Payment Amount + Period Days
+            // Example: 120 - 50 + 30 = 100
+            var newDpd = previousDpd - paymentAmount + periodDaysIncrement;
+            
+            // DPD can improve to 0 (full cure) if payment covers all overdue days plus current period
             // Clamp to 0 minimum
             return Math.Max(0, newDpd);
         }
         else if (actionRoll < _evolution.ImprovementProbability + _evolution.WorseningProbability)
         {
-            // DPD worsens (increases) - no payment made
-            // The base worsening represents the time that passed (periodDaysIncrement)
-            // Plus optional small variations for early-in-period vs late-in-period reporting
+            // DPD worsens (increases) - no payment made, time passes
+            // Standard time progression: DPD increases by period increment
+            // Small variation (±10%) accounts for reporting date variations
             
-            // CRITICAL FIX: DO NOT add random large deltas
-            // The worsening is primarily the period time progression
-            // We add a small controlled variation (±10% of period increment)
             var variationFactor = (random.NextDouble() - 0.5) * 0.2; // -10% to +10%
             var timeProgression = (int)(periodDaysIncrement * (1.0 + variationFactor));
             
@@ -94,7 +106,8 @@ public class DpdEvolutionService
         {
             // DPD stays stable - no payment, standard time progression
             // This is the default case: customer remains delinquent, time passes
-            // DPD increases by exactly the period increment (e.g., 30 days for monthly)
+            // DPD increases by exactly the period increment
+            // Example: Month 01 DPD: 23 ? Month 02 DPD: 23 + 30 = 53
             
             var newDpd = previousDpd + periodDaysIncrement;
             
