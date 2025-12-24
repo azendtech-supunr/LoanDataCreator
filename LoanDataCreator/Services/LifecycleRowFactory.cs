@@ -98,22 +98,24 @@ public class LifecycleRowFactory
         // BUSINESS RULE: Rescheduled is stored in FacilityMaster (constant across all periods)
         var rescheduled = master.Rescheduled;
 
-        // Generate or evolve risk flags (excluding Rescheduled which is now in FacilityMaster)
-        string restructured;
-        int timesRestructured;
+        // BUSINESS RULE: Restructured is stored in FacilityMaster (constant across all periods)
+        var restructured = master.Restructured;
+        var timesRestructured = master.NoOfTimesRestructured;
+
+        // Generate or evolve risk flags (excluding Rescheduled and Restructured which are now in FacilityMaster)
         string upgraded, individuallyImpaired, bucketing;
 
         if (previousState == null)
         {
             // New facility - generate initial risk flags
-            (restructured, timesRestructured, upgraded, individuallyImpaired, bucketing) = 
-                GenerateRiskFlags(daysPastDue, random);
+            (upgraded, individuallyImpaired, bucketing) = 
+                GenerateRiskFlags(daysPastDue, restructured, random);
         }
         else
         {
-            // Existing facility - evolve risk flags (some can only increase, not decrease)
-            (restructured, timesRestructured, upgraded, individuallyImpaired, bucketing) = 
-                EvolveRiskFlags(daysPastDue, previousState, random);
+            // Existing facility - evolve risk flags
+            (upgraded, individuallyImpaired, bucketing) = 
+                EvolveRiskFlags(daysPastDue, restructured, random);
         }
 
         // Create the period row from master + state
@@ -164,8 +166,6 @@ public class LifecycleRowFactory
             row.UndisbursedAmount,
             row.InterestRate,
             row.InterestInSuspense,
-            row.Restructured,
-            row.NoOfTimesRestructured,
             row.UpgradedToDelinquencyBucket,
             row.IndividuallyImpaired,
             row.BucketingInIndividualAssessment,
@@ -293,28 +293,17 @@ public class LifecycleRowFactory
         return interestInSuspense;
     }
 
-    private (string restructured, int timesRestructured, 
-             string upgraded, string individuallyImpaired, string bucketing) GenerateRiskFlags(
-        int daysPastDue, Random random)
+    private (string upgraded, string individuallyImpaired, string bucketing) GenerateRiskFlags(
+        int daysPastDue, string restructured, Random random)
     {
         var dpdFactor = Math.Min(1.0, daysPastDue / 180.0);
         
-        var restructuredProb = Math.Min(0.2, dpdFactor * 0.10);
         var individuallyImpairedProb = Math.Min(0.4, dpdFactor * 0.25);
         
-        var restructured = random.NextDouble() < restructuredProb ? "Yes" : "No";
-        
-        var timesRestructured = 0;
-        if (restructured == "Yes")
-        {
-            timesRestructured = 1;
-            while (random.NextDouble() < 0.1 && timesRestructured < 5)
-                timesRestructured++;
-        }
-
         var upgraded = (daysPastDue >= 30 && random.NextDouble() < 0.7) ? "Yes" : "No";
         var individuallyImpaired = random.NextDouble() < individuallyImpairedProb ? "Yes" : "No";
         
+        // Use Restructured from FacilityMaster for bucketing
         var bucketing = (daysPastDue, individuallyImpaired, restructured) switch
         {
             ( >= 90, _, _) => "NPL",
@@ -324,37 +313,12 @@ public class LifecycleRowFactory
             _ => "Standard"
         };
 
-        return (restructured, timesRestructured, upgraded, individuallyImpaired, bucketing);
+        return (upgraded, individuallyImpaired, bucketing);
     }
 
-    private (string restructured, int timesRestructured, 
-             string upgraded, string individuallyImpaired, string bucketing) EvolveRiskFlags(
-        int daysPastDue, FacilityState previousState, Random random)
+    private (string upgraded, string individuallyImpaired, string bucketing) EvolveRiskFlags(
+        int daysPastDue, string restructured, Random random)
     {
-        // Restructured: can increase but not decrease (QA rule enforcement)
-        var restructured = previousState.Restructured;
-        var timesRestructured = previousState.NoOfTimesRestructured;
-        
-        if (_qaRules.EnforceRestructuredMonotonicity)
-        {
-            // Restructured can only stay same or increase
-            if (restructured == "No" && daysPastDue >= 60 && random.NextDouble() < 0.03)
-            {
-                restructured = "Yes";
-                timesRestructured = 1;
-            }
-            else if (restructured == "Yes" && daysPastDue >= 90 && random.NextDouble() < 0.05)
-            {
-                // Can be restructured again
-                timesRestructured = Math.Min(5, timesRestructured + 1);
-            }
-        }
-        else
-        {
-            // Allow recalculation
-            (restructured, timesRestructured, _, _, _) = GenerateRiskFlags(daysPastDue, random);
-        }
-
         // Upgraded to delinquency bucket
         var upgraded = (daysPastDue >= 30 && random.NextDouble() < 0.7) ? "Yes" : "No";
 
@@ -364,6 +328,7 @@ public class LifecycleRowFactory
         var individuallyImpaired = random.NextDouble() < individuallyImpairedProb ? "Yes" : "No";
 
         // Bucketing based on current DPD and flags
+        // Use Restructured from FacilityMaster (which is consistent across all periods)
         var bucketing = (daysPastDue, individuallyImpaired, restructured) switch
         {
             ( >= 90, _, _) => "NPL",
@@ -373,6 +338,6 @@ public class LifecycleRowFactory
             _ => "Standard"
         };
 
-        return (restructured, timesRestructured, upgraded, individuallyImpaired, bucketing);
+        return (upgraded, individuallyImpaired, bucketing);
     }
 }

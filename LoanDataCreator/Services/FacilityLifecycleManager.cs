@@ -354,6 +354,10 @@ public class FacilityLifecycleManager
         // Values can be "Yes", "No", or empty (empty has ~10% probability)
         var rescheduled = GenerateRescheduledStatus(random);
 
+        // BUSINESS RULE: Generate Restructured status (consistent across all periods for the facility)
+        // Values can be "Yes", "No", or empty (empty has ~10% probability)
+        var (restructured, timesRestructured) = GenerateRestructuredStatus(random);
+
         return new FacilityMaster(
             facilityNumber,
             customer.CustomerNumber,
@@ -372,7 +376,9 @@ public class FacilityLifecycleManager
             collateralType,
             collateralValue,
             baseInterestRate,
-            rescheduled,       // Store in immutable FacilityMaster
+            rescheduled,          // Store in immutable FacilityMaster
+            restructured,         // Store in immutable FacilityMaster
+            timesRestructured,    // Store in immutable FacilityMaster
             period.PeriodKey);
     }
 
@@ -522,7 +528,7 @@ public class FacilityLifecycleManager
         var daysPastDue = GenerateInitialDpd(random);
         var interestInSuspense = CalculateInterestInSuspense(totalOS, daysPastDue, random);
         
-        var (restructured, timesRestructured, upgraded, individuallyImpaired, bucketing) = 
+        var (upgraded, individuallyImpaired, bucketing) = 
             GenerateRiskFlags(daysPastDue, random);
 
         return new FacilityState(
@@ -533,8 +539,6 @@ public class FacilityLifecycleManager
             undisbursedAmount,
             master.BaseInterestRate,
             interestInSuspense,
-            restructured,
-            timesRestructured,
             upgraded,
             individuallyImpaired,
             bucketing,
@@ -674,6 +678,40 @@ public class FacilityLifecycleManager
         else
         {
             return "No"; // ~45% probability of "No"
+        }
+    }
+
+    /// <summary>
+    /// Generates the Restructured status and times restructured for a facility.
+    /// BUSINESS RULE: Restructured can be "Yes", "No", or empty (randomly assigned, consistent across periods).
+    /// Distribution: ~10% empty, ~20% "Yes", ~70% "No"
+    /// If Restructured = "Yes", NoOfTimesRestructured is between 1 and 5
+    /// Otherwise, NoOfTimesRestructured = 0
+    /// </summary>
+    private static (string restructured, int timesRestructured) GenerateRestructuredStatus(Random random)
+    {
+        var value = random.NextDouble();
+        
+        if (value < 0.10)
+        {
+            // ~10% probability of empty
+            return (string.Empty, 0);
+        }
+        else if (value < 0.30)
+        {
+            // ~20% probability of "Yes"
+            // If restructured, generate times restructured (1-5)
+            var times = 1;
+            while (random.NextDouble() < 0.3 && times < 5)
+            {
+                times++;
+            }
+            return ("Yes", times);
+        }
+        else
+        {
+            // ~70% probability of "No"
+            return ("No", 0);
         }
     }
 
@@ -824,38 +862,27 @@ public class FacilityLifecycleManager
         return (collateralType, collateralValue);
     }
 
-    private (string restructured, int timesRestructured, 
-             string upgraded, string individuallyImpaired, string bucketing) GenerateRiskFlags(
+    private (string upgraded, string individuallyImpaired, string bucketing) GenerateRiskFlags(
         int daysPastDue, Random random)
     {
         var dpdFactor = Math.Min(1.0, daysPastDue / 180.0);
         
-        var restructuredProb = Math.Min(0.2, dpdFactor * 0.10);
         var individuallyImpairedProb = Math.Min(0.4, dpdFactor * 0.25);
         
-        var restructured = random.NextDouble() < restructuredProb ? "Yes" : "No";
-        
-        var timesRestructured = 0;
-        if (restructured == "Yes")
-        {
-            timesRestructured = 1;
-            while (random.NextDouble() < 0.1 && timesRestructured < 5)
-                timesRestructured++;
-        }
-
         var upgraded = (daysPastDue >= 30 && random.NextDouble() < 0.7) ? "Yes" : "No";
         var individuallyImpaired = random.NextDouble() < individuallyImpairedProb ? "Yes" : "No";
         
-        var bucketing = (daysPastDue, individuallyImpaired, restructured) switch
+        // Note: bucketing now uses a simplified logic since Restructured is no longer available here
+        // It's stored in FacilityMaster and will be used in row generation
+        var bucketing = (daysPastDue, individuallyImpaired) switch
         {
-            ( >= 90, _, _) => "NPL",
-            ( >= 30, _, _) => "Special Mention",
-            (_, "Yes", _) => "Substandard",
-            (_, _, "Yes") => "Doubtful",
+            ( >= 90, _) => "NPL",
+            ( >= 30, _) => "Special Mention",
+            (_, "Yes") => "Substandard",
             _ => "Standard"
         };
 
-        return (restructured, timesRestructured, upgraded, individuallyImpaired, bucketing);
+        return (upgraded, individuallyImpaired, bucketing);
     }
 
     private static string SampleFromDistribution(Dictionary<string, double> distribution, Random random)
