@@ -108,6 +108,12 @@ public class LifecycleRowFactory
         // BUSINESS RULE: Individually Impaired is stored in FacilityMaster (constant across all periods)
         var individuallyImpaired = master.IndividuallyImpaired;
 
+        // BUSINESS RULE: Bucketing in Individual Assessment value is stored in FacilityMaster (constant across all periods)
+        // Convert the int value to string (0 becomes empty, 3-5 becomes "3", "4", "5")
+        var bucketingInIndividualAssessment = master.BucketingInIndividualAssessmentValue == 0 
+            ? string.Empty 
+            : master.BucketingInIndividualAssessmentValue.ToString();
+
         // Generate bucketing based on DPD and immutable flags
         string bucketing;
 
@@ -153,7 +159,7 @@ public class LifecycleRowFactory
             timesRestructured,
             upgraded,
             individuallyImpaired,
-            bucketing,
+            bucketingInIndividualAssessment, // Now uses consistent value from FacilityMaster
             period.PeriodKey);
     }
 

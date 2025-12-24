@@ -368,6 +368,11 @@ public class FacilityLifecycleManager
         // Values can be "Yes", "No", or empty (~5% "Yes", ~85% "No", ~10% empty)
         var individuallyImpaired = GenerateIndividuallyImpairedStatus(random);
 
+        // BUSINESS RULE: Generate Bucketing in Individual Assessment value (consistent across all periods for the facility)
+        // Values are 3, 4, or 5 when Individually Impaired is "Yes" or "No"
+        // Empty (0) when Individually Impaired is empty
+        var bucketingValue = GenerateBucketingInIndividualAssessmentValue(random, individuallyImpaired);
+
         return new FacilityMaster(
             facilityNumber,
             customer.CustomerNumber,
@@ -390,7 +395,8 @@ public class FacilityLifecycleManager
             restructured,         // Store in immutable FacilityMaster
             timesRestructured,    // Store in immutable FacilityMaster
             upgradedToDelinquencyBucket, // Store in immutable FacilityMaster
-            individuallyImpaired, // NEW: Store in immutable FacilityMaster
+            individuallyImpaired, // Store in immutable FacilityMaster
+            bucketingValue,       // NEW: Store in immutable FacilityMaster
             period.PeriodKey);
     }
 
@@ -783,6 +789,25 @@ public class FacilityLifecycleManager
         {
             return string.Empty; // ~10% probability of empty
         }
+    }
+
+    /// <summary>
+    /// Generates the Bucketing in Individual Assessment value for a facility.
+    /// BUSINESS RULE: Value should be between 3-5, but ONLY when Individually Impaired is "Yes" or "No"
+    /// When Individually Impaired is empty, this value should also be empty (0)
+    /// Distribution: Equal probability (33.33%) for values 3, 4, and 5
+    /// </summary>
+    private static int GenerateBucketingInIndividualAssessmentValue(Random random, string individuallyImpaired)
+    {
+        // Only assign value if Individually Impaired is "Yes" or "No"
+        if (string.IsNullOrEmpty(individuallyImpaired))
+        {
+            return 0; // Empty value (0 represents empty)
+        }
+        
+        // For facilities with Individually Impaired = "Yes" or "No"
+        // Randomly assign a value between 3-5 (equal probability)
+        return random.Next(3, 6); // Returns 3, 4, or 5
     }
 
     private decimal CalculateInterestInSuspense(decimal totalOS, int daysPastDue, Random random)

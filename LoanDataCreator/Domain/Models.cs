@@ -38,6 +38,7 @@ public record FacilityMaster(
     int NoOfTimesRestructured, // Number of times restructured (consistent across all periods)
     string UpgradedToDelinquencyBucket, // NEW: Upgraded to delinquency bucket (consistent across all periods, only populated when both Rescheduled and Restructured are "Yes")
     string IndividuallyImpaired, // NEW: Individually Impaired status (consistent across all periods)
+    int BucketingInIndividualAssessmentValue, // NEW: Bucketing value (3-5, or 0 for empty, consistent across all periods)
     string StartPeriod);
 
 /// <summary>
