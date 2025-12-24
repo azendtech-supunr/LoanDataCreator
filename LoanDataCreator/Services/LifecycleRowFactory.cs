@@ -80,6 +80,14 @@ public class LifecycleRowFactory
             (totalOS, undisbursedAmount) = EvolveAmounts(master.Limit, previousState.TotalOS, previousState.UndisbursedAmount, random);
         }
 
+        // BUSINESS RULE: Undisbursed Amount should only be populated for Housing Loan
+        // For all other products, it should be 0 (which will be rendered as empty in CSV)
+        // BUSINESS RULE: For a given facility, Undisbursed Amount must remain the same across all periods
+        // Therefore, we take it from the FacilityState (which stores the initial value)
+        undisbursedAmount = ShouldPopulateUndisbursedAmount(master.ProductCategory)
+            ? (previousState?.UndisbursedAmount ?? undisbursedAmount) // Use previous value or initial generated value
+            : 0m;
+
         // Use the constant BaseInterestRate from FacilityMaster
         // This ensures the same facility has the same interest rate across all periods
         var interestRate = master.BaseInterestRate;
@@ -127,7 +135,7 @@ public class LifecycleRowFactory
             daysPastDue,
             limit, // Conditionally populated based on Nature or Product Category
             totalOS,
-            undisbursedAmount,
+            undisbursedAmount, // Conditionally populated based on Product Category, constant across periods
             interestInSuspense,
             master.CollateralType,
             master.CollateralValue,
@@ -183,6 +191,15 @@ public class LifecycleRowFactory
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Determines if the Undisbursed Amount field should be populated based on business rules.
+    /// BUSINESS RULE: Undisbursed Amount should only be populated when Product Category is 'Housing Loan'.
+    /// </summary>
+    private static bool ShouldPopulateUndisbursedAmount(string productCategory)
+    {
+        return productCategory.Equals("Housing Loan", StringComparison.OrdinalIgnoreCase);
     }
 
     private (decimal totalOS, decimal undisbursedAmount) GenerateInitialAmounts(decimal limit, Random random)

@@ -505,6 +505,15 @@ public class FacilityLifecycleManager
         var random = _seedDeriver.CreateRandom($"initial:{master.FacilityNumber}:{period.PeriodKey}");
 
         var (totalOS, undisbursedAmount) = GenerateInitialAmounts(master.Limit, random);
+        
+        // BUSINESS RULE: Undisbursed Amount should only be populated for Housing Loan
+        // For all other products, it should be 0 (which will be rendered as empty in CSV)
+        // This value will remain constant across all periods for the facility
+        if (!master.ProductCategory.Equals("Housing Loan", StringComparison.OrdinalIgnoreCase))
+        {
+            undisbursedAmount = 0m;
+        }
+        
         var daysPastDue = GenerateInitialDpd(random);
         var interestInSuspense = CalculateInterestInSuspense(totalOS, daysPastDue, random);
         
