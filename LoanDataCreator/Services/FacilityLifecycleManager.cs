@@ -350,6 +350,10 @@ public class FacilityLifecycleManager
         
         var baseInterestRate = GenerateBaseInterestRate(selectedSegment.PdSegment, random);
 
+        // BUSINESS RULE: Generate Rescheduled status (consistent across all periods for the facility)
+        // Values can be "Yes", "No", or empty (empty has ~10% probability)
+        var rescheduled = GenerateRescheduledStatus(random);
+
         return new FacilityMaster(
             facilityNumber,
             customer.CustomerNumber,
@@ -368,6 +372,7 @@ public class FacilityLifecycleManager
             collateralType,
             collateralValue,
             baseInterestRate,
+            rescheduled,       // Store in immutable FacilityMaster
             period.PeriodKey);
     }
 
@@ -517,7 +522,7 @@ public class FacilityLifecycleManager
         var daysPastDue = GenerateInitialDpd(random);
         var interestInSuspense = CalculateInterestInSuspense(totalOS, daysPastDue, random);
         
-        var (rescheduled, restructured, timesRestructured, upgraded, individuallyImpaired, bucketing) = 
+        var (restructured, timesRestructured, upgraded, individuallyImpaired, bucketing) = 
             GenerateRiskFlags(daysPastDue, random);
 
         return new FacilityState(
@@ -528,7 +533,6 @@ public class FacilityLifecycleManager
             undisbursedAmount,
             master.BaseInterestRate,
             interestInSuspense,
-            rescheduled,
             restructured,
             timesRestructured,
             upgraded,
@@ -648,6 +652,29 @@ public class FacilityLifecycleManager
         var baseRate = _amounts.InterestRateBaseBySegment.GetValueOrDefault(segment, 0.08);
         var rate = baseRate + (random.NextDouble() - 0.5) * 0.01;
         return Math.Round((decimal)Math.Max(0.001, rate), 4);
+    }
+
+    /// <summary>
+    /// Generates the Rescheduled status for a facility.
+    /// BUSINESS RULE: Rescheduled can be "Yes", "No", or empty (randomly assigned, consistent across periods).
+    /// Distribution: ~10% empty, ~45% "Yes", ~45% "No"
+    /// </summary>
+    private static string GenerateRescheduledStatus(Random random)
+    {
+        var value = random.NextDouble();
+        
+        if (value < 0.10)
+        {
+            return string.Empty; // ~10% probability of empty
+        }
+        else if (value < 0.55)
+        {
+            return "Yes"; // ~45% probability of "Yes"
+        }
+        else
+        {
+            return "No"; // ~45% probability of "No"
+        }
     }
 
     private decimal CalculateInterestInSuspense(decimal totalOS, int daysPastDue, Random random)
@@ -797,17 +824,15 @@ public class FacilityLifecycleManager
         return (collateralType, collateralValue);
     }
 
-    private (string rescheduled, string restructured, int timesRestructured, 
+    private (string restructured, int timesRestructured, 
              string upgraded, string individuallyImpaired, string bucketing) GenerateRiskFlags(
         int daysPastDue, Random random)
     {
         var dpdFactor = Math.Min(1.0, daysPastDue / 180.0);
         
-        var rescheduledProb = Math.Min(0.3, dpdFactor * 0.15);
         var restructuredProb = Math.Min(0.2, dpdFactor * 0.10);
         var individuallyImpairedProb = Math.Min(0.4, dpdFactor * 0.25);
         
-        var rescheduled = random.NextDouble() < rescheduledProb ? "Yes" : "No";
         var restructured = random.NextDouble() < restructuredProb ? "Yes" : "No";
         
         var timesRestructured = 0;
@@ -830,7 +855,7 @@ public class FacilityLifecycleManager
             _ => "Standard"
         };
 
-        return (rescheduled, restructured, timesRestructured, upgraded, individuallyImpaired, bucketing);
+        return (restructured, timesRestructured, upgraded, individuallyImpaired, bucketing);
     }
 
     private static string SampleFromDistribution(Dictionary<string, double> distribution, Random random)

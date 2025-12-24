@@ -95,21 +95,24 @@ public class LifecycleRowFactory
         // Calculate interest in suspense based on DPD
         var interestInSuspense = CalculateInterestInSuspense(totalOS, daysPastDue, random);
 
-        // Generate or evolve risk flags
-        string rescheduled, restructured;
+        // BUSINESS RULE: Rescheduled is stored in FacilityMaster (constant across all periods)
+        var rescheduled = master.Rescheduled;
+
+        // Generate or evolve risk flags (excluding Rescheduled which is now in FacilityMaster)
+        string restructured;
         int timesRestructured;
         string upgraded, individuallyImpaired, bucketing;
 
         if (previousState == null)
         {
             // New facility - generate initial risk flags
-            (rescheduled, restructured, timesRestructured, upgraded, individuallyImpaired, bucketing) = 
+            (restructured, timesRestructured, upgraded, individuallyImpaired, bucketing) = 
                 GenerateRiskFlags(daysPastDue, random);
         }
         else
         {
             // Existing facility - evolve risk flags (some can only increase, not decrease)
-            (rescheduled, restructured, timesRestructured, upgraded, individuallyImpaired, bucketing) = 
+            (restructured, timesRestructured, upgraded, individuallyImpaired, bucketing) = 
                 EvolveRiskFlags(daysPastDue, previousState, random);
         }
 
@@ -161,7 +164,6 @@ public class LifecycleRowFactory
             row.UndisbursedAmount,
             row.InterestRate,
             row.InterestInSuspense,
-            row.Rescheduled,
             row.Restructured,
             row.NoOfTimesRestructured,
             row.UpgradedToDelinquencyBucket,
@@ -291,17 +293,15 @@ public class LifecycleRowFactory
         return interestInSuspense;
     }
 
-    private (string rescheduled, string restructured, int timesRestructured, 
+    private (string restructured, int timesRestructured, 
              string upgraded, string individuallyImpaired, string bucketing) GenerateRiskFlags(
         int daysPastDue, Random random)
     {
         var dpdFactor = Math.Min(1.0, daysPastDue / 180.0);
         
-        var rescheduledProb = Math.Min(0.3, dpdFactor * 0.15);
         var restructuredProb = Math.Min(0.2, dpdFactor * 0.10);
         var individuallyImpairedProb = Math.Min(0.4, dpdFactor * 0.25);
         
-        var rescheduled = random.NextDouble() < rescheduledProb ? "Yes" : "No";
         var restructured = random.NextDouble() < restructuredProb ? "Yes" : "No";
         
         var timesRestructured = 0;
@@ -324,22 +324,13 @@ public class LifecycleRowFactory
             _ => "Standard"
         };
 
-        return (rescheduled, restructured, timesRestructured, upgraded, individuallyImpaired, bucketing);
+        return (restructured, timesRestructured, upgraded, individuallyImpaired, bucketing);
     }
 
-    private (string rescheduled, string restructured, int timesRestructured, 
+    private (string restructured, int timesRestructured, 
              string upgraded, string individuallyImpaired, string bucketing) EvolveRiskFlags(
         int daysPastDue, FacilityState previousState, Random random)
     {
-        // Rescheduled: once Yes, stays Yes (can't un-reschedule)
-        var rescheduled = previousState.Rescheduled;
-        if (rescheduled == "No" && daysPastDue >= 30)
-        {
-            // Can become rescheduled if DPD is high
-            if (random.NextDouble() < 0.05)
-                rescheduled = "Yes";
-        }
-
         // Restructured: can increase but not decrease (QA rule enforcement)
         var restructured = previousState.Restructured;
         var timesRestructured = previousState.NoOfTimesRestructured;
@@ -361,7 +352,7 @@ public class LifecycleRowFactory
         else
         {
             // Allow recalculation
-            (_, restructured, timesRestructured, _, _, _) = GenerateRiskFlags(daysPastDue, random);
+            (restructured, timesRestructured, _, _, _) = GenerateRiskFlags(daysPastDue, random);
         }
 
         // Upgraded to delinquency bucket
@@ -382,6 +373,6 @@ public class LifecycleRowFactory
             _ => "Standard"
         };
 
-        return (rescheduled, restructured, timesRestructured, upgraded, individuallyImpaired, bucketing);
+        return (restructured, timesRestructured, upgraded, individuallyImpaired, bucketing);
     }
 }
