@@ -57,6 +57,12 @@ public class LifecycleRowFactory
             daysPastDue = _dpdEvolution.EvolveDpd(previousState.DaysPastDue, facilityNumber, period.PeriodKey, periodDaysIncrement);
         }
 
+        // BUSINESS RULE: Limit should only be populated when Nature is 'Revolving' OR Product Category is 'Housing Loan'
+        // Otherwise, it should be 0 (which will be rendered as empty in CSV)
+        var limit = ShouldPopulateLimit(master.Nature, master.ProductCategory) 
+            ? master.Limit 
+            : 0m;
+
         // Generate or evolve financial amounts
         decimal totalOS;
         decimal undisbursedAmount;
@@ -64,11 +70,13 @@ public class LifecycleRowFactory
         if (previousState == null)
         {
             // New facility - generate initial amounts
+            // Use actual limit for calculations, but display limit may be 0
             (totalOS, undisbursedAmount) = GenerateInitialAmounts(master.Limit, random);
         }
         else
         {
             // Existing facility - evolve amounts from previous period
+            // Use actual limit for calculations, but display limit may be 0
             (totalOS, undisbursedAmount) = EvolveAmounts(master.Limit, previousState.TotalOS, previousState.UndisbursedAmount, random);
         }
 
@@ -117,7 +125,7 @@ public class LifecycleRowFactory
             string.Empty, // Installments Value
             master.InstallmentType,
             daysPastDue,
-            master.Limit,
+            limit, // Conditionally populated based on Nature or Product Category
             totalOS,
             undisbursedAmount,
             interestInSuspense,
@@ -154,6 +162,27 @@ public class LifecycleRowFactory
             IsSettled: false);
 
         _lifecycleManager.StoreFacilityState(row.Period, state);
+    }
+
+    /// <summary>
+    /// Determines if the Limit field should be populated based on business rules.
+    /// BUSINESS RULE: Limit should only be populated when Nature is 'Revolving' OR Product Category is 'Housing Loan'.
+    /// </summary>
+    private static bool ShouldPopulateLimit(string nature, string productCategory)
+    {
+        // Check if Nature is Revolving
+        if (nature.Equals("Revolving", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        // Check if Product Category is Housing Loan
+        if (productCategory.Equals("Housing Loan", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return false;
     }
 
     private (decimal totalOS, decimal undisbursedAmount) GenerateInitialAmounts(decimal limit, Random random)

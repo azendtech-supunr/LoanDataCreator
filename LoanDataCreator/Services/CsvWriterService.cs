@@ -115,7 +115,7 @@ public class CsvWriterService
             EscapeCsvField(row.InstallmentsValue),
             EscapeCsvField(row.InstallmentType),
             row.DaysPastDue.ToString(CultureInfo.InvariantCulture),
-            row.Limit.ToString(CultureInfo.InvariantCulture),
+            row.Limit == 0 ? string.Empty : row.Limit.ToString(CultureInfo.InvariantCulture), // Empty if Limit is 0
             row.TotalOS.ToString(CultureInfo.InvariantCulture),
             row.UndisbursedAmount.ToString(CultureInfo.InvariantCulture),
             row.InterestInSuspense.ToString(CultureInfo.InvariantCulture),
