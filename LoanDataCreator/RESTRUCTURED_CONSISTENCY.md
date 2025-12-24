@@ -8,12 +8,20 @@ This document describes the implementation ensuring that the 'Restructured (Yes/
 **Original Requirement:**
 > The 'Restructured (Yes/No)' column should have the values 'Yes', 'No', or empty assigned randomly, and these values should be consistent across all periods for a given facility.
 
+**Additional Requirement:**
+> The 'No. of Times Restructured' column should have a value between 1 and 3, but only if 'Rescheduled (Yes/No)' has the value 'Yes' for the given facility. The value should be consistent across all periods for a given facility.
+
 ## Implementation Approach
 
 ### Key Design Decision
 Move `Restructured` and `NoOfTimesRestructured` from **`FacilityState`** (which varies per period) to **`FacilityMaster`** (which is immutable and persists across all periods).
 
 This follows the same pattern successfully used for `Rescheduled` field.
+
+**IMPORTANT:** The `NoOfTimesRestructured` field is tied to the `Rescheduled` field, not the `Restructured` field:
+- If `Rescheduled = "Yes"`, then `NoOfTimesRestructured` is between 1-3
+- If `Rescheduled = "No"` or empty, then `NoOfTimesRestructured = 0`
+- The `Restructured` field is generated independently of `NoOfTimesRestructured`
 
 ### Architecture Changes
 
@@ -25,7 +33,7 @@ public record FacilityMaster(
     // ... existing fields ...
     string Rescheduled,          // Rescheduled status (consistent across all periods)
     string Restructured,         // NEW: Restructured status (consistent across all periods)
-    int NoOfTimesRestructured,   // NEW: Number of times restructured (consistent across all periods)
+    int NoOfTimesRestructured,   // NEW: Number of times restructured (consistent across all periods, based on Rescheduled)
     string StartPeriod);
 ```
 
@@ -49,34 +57,45 @@ public record FacilityState(
 /// Generates the Restructured status and times restructured for a facility.
 /// BUSINESS RULE: Restructured can be "Yes", "No", or empty (randomly assigned, consistent across periods).
 /// Distribution: ~10% empty, ~20% "Yes", ~70% "No"
-/// If Restructured = "Yes", NoOfTimesRestructured is between 1 and 5
+/// BUSINESS RULE: NoOfTimesRestructured should be between 1-3 ONLY if Rescheduled = "Yes"
 /// Otherwise, NoOfTimesRestructured = 0
 /// </summary>
-private static (string restructured, int timesRestructured) GenerateRestructuredStatus(Random random)
+private static (string restructured, int timesRestructured) GenerateRestructuredStatus(Random random, string rescheduled)
 {
     var value = random.NextDouble();
     
+    // Generate Restructured status
+    string restructured;
     if (value < 0.10)
     {
         // ~10% probability of empty
-        return (string.Empty, 0);
+        restructured = string.Empty;
     }
     else if (value < 0.30)
     {
         // ~20% probability of "Yes"
-        // If restructured, generate times restructured (1-5)
-        var times = 1;
-        while (random.NextDouble() < 0.3 && times < 5)
-        {
-            times++;
-        }
-        return ("Yes", times);
+        restructured = "Yes";
     }
     else
     {
         // ~70% probability of "No"
-        return ("No", 0);
+        restructured = "No";
     }
+    
+    // Generate NoOfTimesRestructured based on Rescheduled status (NOT Restructured)
+    int timesRestructured;
+    if (rescheduled.Equals("Yes", StringComparison.OrdinalIgnoreCase))
+    {
+        // If Rescheduled = "Yes", generate times restructured between 1-3
+        timesRestructured = random.Next(1, 4); // Returns 1, 2, or 3
+    }
+    else
+    {
+        // If Rescheduled = "No" or empty, NoOfTimesRestructured = 0
+        timesRestructured = 0;
+    }
+    
+    return (restructured, timesRestructured);
 }
 ```
 
@@ -90,7 +109,8 @@ private FacilityMaster CreateFacilityMaster(...)
     var rescheduled = GenerateRescheduledStatus(random);
 
     // BUSINESS RULE: Generate Restructured status (consistent across all periods)
-    var (restructured, timesRestructured) = GenerateRestructuredStatus(random);
+    // NoOfTimesRestructured is based on Rescheduled status (1-3 if Rescheduled="Yes", 0 otherwise)
+    var (restructured, timesRestructured) = GenerateRestructuredStatus(random, rescheduled);
 
     return new FacilityMaster(
         // ... other fields ...
@@ -217,25 +237,29 @@ private (string upgraded, string individuallyImpaired, string bucketing) EvolveR
 
 The `GenerateRestructuredStatus` method produces the following distribution:
 
-| Value | Probability | NoOfTimesRestructured | Description |
-|-------|-------------|----------------------|-------------|
-| Empty | ~10% | 0 | No restructuring information |
-| "Yes" | ~20% | 1-5 | Facility has been restructured 1-5 times |
-| "No" | ~70% | 0 | Facility has not been restructured |
+### Restructured Status Distribution
+| Value | Probability | Description |
+|-------|-------------|-------------|
+| Empty | ~10% | No restructuring information |
+| "Yes" | ~20% | Facility has been restructured |
+| "No" | ~70% | Facility has not been restructured |
 
-### NoOfTimesRestructured Distribution (when Restructured = "Yes")
+### NoOfTimesRestructured Distribution (based on Rescheduled status)
 
-When a facility has `Restructured = "Yes"`, the number of times is determined probabilistically:
-- Starts at 1
-- 30% chance to increment (up to maximum of 5)
-- Average: ~1.4 times restructured
-- Range: 1-5 times
+**IMPORTANT:** The `NoOfTimesRestructured` field is controlled by the `Rescheduled` field, NOT the `Restructured` field:
+
+| Rescheduled Value | NoOfTimesRestructured | Description |
+|-------------------|----------------------|-------------|
+| "Yes" | 1, 2, or 3 (random) | Facility has been rescheduled, may be restructured 1-3 times |
+| "No" | 0 | Facility has not been rescheduled, no restructuring count |
+| Empty | 0 | Unknown rescheduling status, no restructuring count |
 
 This distribution ensures:
-- Realistic mix where most facilities are not restructured (~70%)
-- Small percentage with restructuring history (~20%)
-- Some facilities with missing/unknown restructuring status (~10%)
-- Realistic multiple restructuring scenarios (when applicable)
+- Realistic mix where most facilities are not restructured (~70% have Restructured = "No")
+- Small percentage with restructuring history (~20% have Restructured = "Yes")
+- Some facilities with missing/unknown restructuring status (~10% have Restructured = empty)
+- **NoOfTimesRestructured is between 1-3 when Rescheduled = "Yes" (~45% of facilities)**
+- **NoOfTimesRestructured is 0 when Rescheduled = "No" or empty (~55% of facilities)**
 
 ## Consistency Mechanism
 
@@ -245,10 +269,11 @@ The Restructured and NoOfTimesRestructured values are stored in the `FacilityMas
 
 ```csharp
 // Generation at facility creation
-var (restructured, timesRestructured) = GenerateRestructuredStatus(random);  // Generated once
+var rescheduled = GenerateRescheduledStatus(random);  // Generated first
+var (restructured, timesRestructured) = GenerateRestructuredStatus(random, rescheduled);  // Generated with rescheduled context
 
 // Stored in immutable FacilityMaster
-return new FacilityMaster(..., restructured, timesRestructured, ...);
+return new FacilityMaster(..., rescheduled, restructured, timesRestructured, ...);
 ```
 
 ### Usage in Row Generation
@@ -258,18 +283,21 @@ The `LifecycleRowFactory` retrieves the Restructured values from `FacilityMaster
 ```csharp
 // Period 1
 var master = _lifecycleManager.GetFacilityMaster(facilityNumber);
-var restructured = master.Restructured;              // e.g., "Yes"
-var timesRestructured = master.NoOfTimesRestructured; // e.g., 3
+var rescheduled = master.Rescheduled;                // e.g., "Yes"
+var restructured = master.Restructured;              // e.g., "No"
+var timesRestructured = master.NoOfTimesRestructured; // e.g., 2 (because Rescheduled = "Yes")
 
 // Period 2 (same facility)
 var master = _lifecycleManager.GetFacilityMaster(facilityNumber);
-var restructured = master.Restructured;              // Still "Yes"
-var timesRestructured = master.NoOfTimesRestructured; // Still 3
+var rescheduled = master.Rescheduled;                // Still "Yes"
+var restructured = master.Restructured;              // Still "No"
+var timesRestructured = master.NoOfTimesRestructured; // Still 2
 
 // Period N (same facility)
 var master = _lifecycleManager.GetFacilityMaster(facilityNumber);
-var restructured = master.Restructured;              // Always "Yes"
-var timesRestructured = master.NoOfTimesRestructured; // Always 3
+var rescheduled = master.Rescheduled;                // Always "Yes"
+var restructured = master.Restructured;              // Always "No"
+var timesRestructured = master.NoOfTimesRestructured; // Always 2
 ```
 
 ## Impact on QA Rules
@@ -295,7 +323,7 @@ The `appsettings.json` configuration option `EnforceRestructuredMonotonicity` is
 1. **Business Rule Compliance**: 
    - Restructured values are randomly assigned ("Yes", "No", or empty)
    - Values remain consistent across all periods for each facility
-   - NoOfTimesRestructured is consistent with Restructured status
+   - NoOfTimesRestructured is consistent with Rescheduled status
 
 2. **Lifecycle Consistency**: 
    - Once a facility is created, its Restructured status never changes
@@ -305,7 +333,7 @@ The `appsettings.json` configuration option `EnforceRestructuredMonotonicity` is
 3. **Data Quality**: 
    - No inconsistencies across periods
    - Predictable and repeatable data generation
-   - Logical relationship between Restructured and NoOfTimesRestructured
+   - Logical relationship between Rescheduled and NoOfTimesRestructured
 
 4. **Deterministic Generation**: 
    - Same facility will always have the same Restructured values (given the same seed)
@@ -322,8 +350,8 @@ The `appsettings.json` configuration option `EnforceRestructuredMonotonicity` is
 - Verify approximately 10% of facilities have empty Restructured
 - Verify approximately 20% of facilities have Restructured = "Yes"
 - Verify approximately 70% of facilities have Restructured = "No"
-- For Restructured = "Yes", verify NoOfTimesRestructured is between 1-5
-- For Restructured = "No" or empty, verify NoOfTimesRestructured = 0
+- **Verify NoOfTimesRestructured is between 1-3 when Rescheduled = "Yes"**
+- **Verify NoOfTimesRestructured = 0 when Rescheduled = "No" or empty**
 
 ### 2. Consistency Tests
 - Generate multiple periods for the same facility
@@ -332,47 +360,58 @@ The `appsettings.json` configuration option `EnforceRestructuredMonotonicity` is
 - Verify no random variation or changes across periods
 
 ### 3. Logical Relationship Tests
-- When Restructured = "Yes", NoOfTimesRestructured > 0
-- When Restructured = "No" or empty, NoOfTimesRestructured = 0
-- NoOfTimesRestructured never exceeds 5
+- **When Rescheduled = "Yes", NoOfTimesRestructured is between 1-3**
+- **When Rescheduled = "No" or empty, NoOfTimesRestructured = 0**
+- Restructured and NoOfTimesRestructured are independent (can have any combination)
+- NoOfTimesRestructured never exceeds 3
 
 ### 4. Edge Case Tests
 - New facilities created in later periods: Restructured is generated and remains constant
 - Settled facilities: Restructured remains constant even after settlement
 - Multiple facilities for same customer: Each facility can have different Restructured values
+- **Facility with Rescheduled = "Yes" and Restructured = "No" should have NoOfTimesRestructured between 1-3**
+- **Facility with Rescheduled = "No" and Restructured = "Yes" should have NoOfTimesRestructured = 0**
 
 ## Example Output
 
-### Facility with Restructured = "Yes" (3 times)
+### Facility with Rescheduled = "Yes", Restructured = "Yes", NoOfTimesRestructured = 3
 ```
-Period  | Facility Number | Restructured | No. of Times | DPD | Bucketing
-2021-01 | FAC0000000101   | Yes          | 3            | 15  | Doubtful
-2021-02 | FAC0000000101   | Yes          | 3            | 18  | Doubtful
-2021-03 | FAC0000000101   | Yes          | 3            | 22  | Doubtful
-```
-
-### Facility with Restructured = "No"
-```
-Period  | Facility Number | Restructured | No. of Times | DPD | Bucketing
-2021-01 | FAC0000000202   | No           | 0            | 0   | Standard
-2021-02 | FAC0000000202   | No           | 0            | 5   | Standard
-2021-03 | FAC0000000202   | No           | 0            | 10  | Standard
+Period  | Facility Number | Rescheduled | Restructured | No. of Times | DPD | Bucketing
+2021-01 | FAC0000000101   | Yes         | Yes          | 3            | 15  | Doubtful
+2021-02 | FAC0000000101   | Yes         | Yes          | 3            | 18  | Doubtful
+2021-03 | FAC0000000101   | Yes         | Yes          | 3            | 22  | Doubtful
 ```
 
-### Facility with Restructured = Empty
+### Facility with Rescheduled = "Yes", Restructured = "No", NoOfTimesRestructured = 2
 ```
-Period  | Facility Number | Restructured | No. of Times | DPD | Bucketing
-2021-01 | FAC0000000303   | (empty)      | 0            | 10  | Standard
-2021-02 | FAC0000000303   | (empty)      | 0            | 12  | Standard
-2021-03 | FAC0000000303   | (empty)      | 0            | 8   | Standard
+Period  | Facility Number | Rescheduled | Restructured | No. of Times | DPD | Bucketing
+2021-01 | FAC0000000202   | Yes         | No           | 2            | 0   | Standard
+2021-02 | FAC0000000202   | Yes         | No           | 2            | 5   | Standard
+2021-03 | FAC0000000202   | Yes         | No           | 2            | 10  | Standard
 ```
 
-### Facility with Restructured = "Yes" (1 time)
+### Facility with Rescheduled = "No", Restructured = "Yes", NoOfTimesRestructured = 0
 ```
-Period  | Facility Number | Restructured | No. of Times | DPD | Bucketing
-2021-01 | FAC0000000404   | Yes          | 1            | 5   | Doubtful
-2021-02 | FAC0000000404   | Yes          | 1            | 8   | Doubtful
-2021-03 | FAC0000000404   | Yes          | 1            | 3   | Doubtful
+Period  | Facility Number | Rescheduled | Restructured | No. of Times | DPD | Bucketing
+2021-01 | FAC0000000303   | No          | Yes          | 0            | 10  | Doubtful
+2021-02 | FAC0000000303   | No          | Yes          | 0            | 12  | Doubtful
+2021-03 | FAC0000000303   | No          | Yes          | 0            | 8   | Doubtful
+```
+
+### Facility with Rescheduled = "No", Restructured = "No", NoOfTimesRestructured = 0
+```
+Period  | Facility Number | Rescheduled | Restructured | No. of Times | DPD | Bucketing
+2021-01 | FAC0000000404   | No          | No           | 0            | 5   | Standard
+2021-02 | FAC0000000404   | No          | No           | 0            | 8   | Standard
+2021-03 | FAC0000000404   | No          | No           | 0            | 3   | Standard
+```
+
+### Facility with Rescheduled = Empty, Restructured = Empty, NoOfTimesRestructured = 0
+```
+Period  | Facility Number | Rescheduled | Restructured | No. of Times | DPD | Bucketing
+2021-01 | FAC0000000505   | (empty)     | (empty)      | 0            | 5   | Standard
+2021-02 | FAC0000000505   | (empty)     | (empty)      | 0            | 8   | Standard
+2021-03 | FAC0000000505   | (empty)     | (empty)      | 0            | 3   | Standard
 ```
 
 ## Migration Notes

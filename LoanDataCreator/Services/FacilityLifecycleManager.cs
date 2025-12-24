@@ -356,7 +356,8 @@ public class FacilityLifecycleManager
 
         // BUSINESS RULE: Generate Restructured status (consistent across all periods for the facility)
         // Values can be "Yes", "No", or empty (empty has ~10% probability)
-        var (restructured, timesRestructured) = GenerateRestructuredStatus(random);
+        // NoOfTimesRestructured is based on Rescheduled status (1-3 if Rescheduled="Yes", 0 otherwise)
+        var (restructured, timesRestructured) = GenerateRestructuredStatus(random, rescheduled);
 
         return new FacilityMaster(
             facilityNumber,
@@ -685,34 +686,45 @@ public class FacilityLifecycleManager
     /// Generates the Restructured status and times restructured for a facility.
     /// BUSINESS RULE: Restructured can be "Yes", "No", or empty (randomly assigned, consistent across periods).
     /// Distribution: ~10% empty, ~20% "Yes", ~70% "No"
-    /// If Restructured = "Yes", NoOfTimesRestructured is between 1 and 5
+    /// BUSINESS RULE: NoOfTimesRestructured should be between 1-3 ONLY if Rescheduled = "Yes"
     /// Otherwise, NoOfTimesRestructured = 0
     /// </summary>
-    private static (string restructured, int timesRestructured) GenerateRestructuredStatus(Random random)
+    private static (string restructured, int timesRestructured) GenerateRestructuredStatus(Random random, string rescheduled)
     {
         var value = random.NextDouble();
         
+        // Generate Restructured status
+        string restructured;
         if (value < 0.10)
         {
             // ~10% probability of empty
-            return (string.Empty, 0);
+            restructured = string.Empty;
         }
         else if (value < 0.30)
         {
             // ~20% probability of "Yes"
-            // If restructured, generate times restructured (1-5)
-            var times = 1;
-            while (random.NextDouble() < 0.3 && times < 5)
-            {
-                times++;
-            }
-            return ("Yes", times);
+            restructured = "Yes";
         }
         else
         {
             // ~70% probability of "No"
-            return ("No", 0);
+            restructured = "No";
         }
+        
+        // Generate NoOfTimesRestructured based on Rescheduled status
+        int timesRestructured;
+        if (rescheduled.Equals("Yes", StringComparison.OrdinalIgnoreCase))
+        {
+            // If Rescheduled = "Yes", generate times restructured between 1-3
+            timesRestructured = random.Next(1, 4); // Returns 1, 2, or 3
+        }
+        else
+        {
+            // If Rescheduled = "No" or empty, NoOfTimesRestructured = 0
+            timesRestructured = 0;
+        }
+        
+        return (restructured, timesRestructured);
     }
 
     private decimal CalculateInterestInSuspense(decimal totalOS, int daysPastDue, Random random)
