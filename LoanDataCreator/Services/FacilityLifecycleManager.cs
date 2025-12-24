@@ -364,6 +364,10 @@ public class FacilityLifecycleManager
         // Value is between 1-4, but only ~50% of eligible facilities get a value
         var upgradedToDelinquencyBucket = GenerateUpgradedToDelinquencyBucket(random, rescheduled, restructured);
 
+        // BUSINESS RULE: Generate Individually Impaired status (consistent across all periods for the facility)
+        // Values can be "Yes", "No", or empty (~5% "Yes", ~85% "No", ~10% empty)
+        var individuallyImpaired = GenerateIndividuallyImpairedStatus(random);
+
         return new FacilityMaster(
             facilityNumber,
             customer.CustomerNumber,
@@ -385,7 +389,8 @@ public class FacilityLifecycleManager
             rescheduled,          // Store in immutable FacilityMaster
             restructured,         // Store in immutable FacilityMaster
             timesRestructured,    // Store in immutable FacilityMaster
-            upgradedToDelinquencyBucket, // NEW: Store in immutable FacilityMaster
+            upgradedToDelinquencyBucket, // Store in immutable FacilityMaster
+            individuallyImpaired, // NEW: Store in immutable FacilityMaster
             period.PeriodKey);
     }
 
@@ -535,8 +540,7 @@ public class FacilityLifecycleManager
         var daysPastDue = GenerateInitialDpd(random);
         var interestInSuspense = CalculateInterestInSuspense(totalOS, daysPastDue, random);
         
-        var (individuallyImpaired, bucketing) = 
-            GenerateRiskFlags(daysPastDue, random);
+        var bucketing = GenerateBucketing(daysPastDue, master.IndividuallyImpaired, master.Restructured);
 
         return new FacilityState(
             master.FacilityNumber,
@@ -546,7 +550,6 @@ public class FacilityLifecycleManager
             undisbursedAmount,
             master.BaseInterestRate,
             interestInSuspense,
-            individuallyImpaired,
             bucketing,
             IsSettled: false);
     }
@@ -758,6 +761,30 @@ public class FacilityLifecycleManager
         return string.Empty;
     }
 
+    /// <summary>
+    /// Generates the Individually Impaired status for a facility.
+    /// BUSINESS RULE: Individually Impaired can be "Yes", "No", or empty (randomly assigned, consistent across periods).
+    /// Distribution: ~5% "Yes", ~95% "No" or empty
+    /// Example: For 100,000 records, approximately 5,000 should have the value "Yes"
+    /// </summary>
+    private static string GenerateIndividuallyImpairedStatus(Random random)
+    {
+        var value = random.NextDouble();
+        
+        if (value < 0.05)
+        {
+            return "Yes"; // ~5% probability of "Yes"
+        }
+        else if (value < 0.90)
+        {
+            return "No"; // ~85% probability of "No"
+        }
+        else
+        {
+            return string.Empty; // ~10% probability of empty
+        }
+    }
+
     private decimal CalculateInterestInSuspense(decimal totalOS, int daysPastDue, Random random)
     {
         // BUSINESS RULE: Interest in Suspense should only be populated when DPD > 90
@@ -925,6 +952,22 @@ public class FacilityLifecycleManager
         };
 
         return (individuallyImpaired, bucketing);
+    }
+
+    /// <summary>
+    /// Generates the bucketing based on DPD, Individually Impaired, and Restructured status.
+    /// BUSINESS RULE: Bucketing depends on DPD thresholds, Individually Impaired status (from FacilityMaster), and Restructured status (from FacilityMaster).
+    /// </summary>
+    private static string GenerateBucketing(int daysPastDue, string individuallyImpaired, string restructured)
+    {
+        return (daysPastDue, individuallyImpaired, restructured) switch
+        {
+            ( >= 90, _, _) => "NPL",
+            ( >= 30, _, _) => "Special Mention",
+            (_, "Yes", _) => "Substandard",
+            (_, _, "Yes") => "Doubtful",
+            _ => "Standard"
+        };
     }
 
     private static string SampleFromDistribution(Dictionary<string, double> distribution, Random random)

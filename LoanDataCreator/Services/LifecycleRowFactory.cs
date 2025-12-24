@@ -105,20 +105,21 @@ public class LifecycleRowFactory
         // BUSINESS RULE: Upgraded to Delinquency Bucket is stored in FacilityMaster (constant across all periods)
         var upgraded = master.UpgradedToDelinquencyBucket;
 
-        // Generate or evolve risk flags (excluding Rescheduled, Restructured, and Upgraded which are now in FacilityMaster)
-        string individuallyImpaired, bucketing;
+        // BUSINESS RULE: Individually Impaired is stored in FacilityMaster (constant across all periods)
+        var individuallyImpaired = master.IndividuallyImpaired;
+
+        // Generate bucketing based on DPD and immutable flags
+        string bucketing;
 
         if (previousState == null)
         {
-            // New facility - generate initial risk flags
-            (individuallyImpaired, bucketing) = 
-                GenerateRiskFlags(daysPastDue, restructured, random);
+            // New facility - generate initial bucketing
+            bucketing = GenerateBucketing(daysPastDue, individuallyImpaired, restructured);
         }
         else
         {
-            // Existing facility - evolve risk flags
-            (individuallyImpaired, bucketing) = 
-                EvolveRiskFlags(daysPastDue, restructured, random);
+            // Existing facility - update bucketing based on current DPD
+            bucketing = GenerateBucketing(daysPastDue, individuallyImpaired, restructured);
         }
 
         // Create the period row from master + state
@@ -169,7 +170,6 @@ public class LifecycleRowFactory
             row.UndisbursedAmount,
             row.InterestRate,
             row.InterestInSuspense,
-            row.IndividuallyImpaired,
             row.BucketingInIndividualAssessment,
             IsSettled: false);
 
@@ -295,17 +295,13 @@ public class LifecycleRowFactory
         return interestInSuspense;
     }
 
-    private (string individuallyImpaired, string bucketing) GenerateRiskFlags(
-        int daysPastDue, string restructured, Random random)
+    /// <summary>
+    /// Generates the bucketing based on DPD, Individually Impaired, and Restructured status.
+    /// BUSINESS RULE: Bucketing depends on DPD thresholds, Individually Impaired status (from FacilityMaster), and Restructured status (from FacilityMaster).
+    /// </summary>
+    private static string GenerateBucketing(int daysPastDue, string individuallyImpaired, string restructured)
     {
-        var dpdFactor = Math.Min(1.0, daysPastDue / 180.0);
-        
-        var individuallyImpairedProb = Math.Min(0.4, dpdFactor * 0.25);
-        
-        var individuallyImpaired = random.NextDouble() < individuallyImpairedProb ? "Yes" : "No";
-        
-        // Use Restructured from FacilityMaster for bucketing
-        var bucketing = (daysPastDue, individuallyImpaired, restructured) switch
+        return (daysPastDue, individuallyImpaired, restructured) switch
         {
             ( >= 90, _, _) => "NPL",
             ( >= 30, _, _) => "Special Mention",
@@ -313,29 +309,5 @@ public class LifecycleRowFactory
             (_, _, "Yes") => "Doubtful",
             _ => "Standard"
         };
-
-        return (individuallyImpaired, bucketing);
-    }
-
-    private (string individuallyImpaired, string bucketing) EvolveRiskFlags(
-        int daysPastDue, string restructured, Random random)
-    {
-        // Individually Impaired
-        var dpdFactor = Math.Min(1.0, daysPastDue / 180.0);
-        var individuallyImpairedProb = Math.Min(0.4, dpdFactor * 0.25);
-        var individuallyImpaired = random.NextDouble() < individuallyImpairedProb ? "Yes" : "No";
-
-        // Bucketing based on current DPD and flags
-        // Use Restructured from FacilityMaster (which is consistent across all periods)
-        var bucketing = (daysPastDue, individuallyImpaired, restructured) switch
-        {
-            ( >= 90, _, _) => "NPL",
-            ( >= 30, _, _) => "Special Mention",
-            (_, "Yes", _) => "Substandard",
-            (_, _, "Yes") => "Doubtful",
-            _ => "Standard"
-        };
-
-        return (individuallyImpaired, bucketing);
     }
 }
