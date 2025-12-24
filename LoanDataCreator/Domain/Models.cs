@@ -34,8 +34,9 @@ public record FacilityMaster(
     decimal CollateralValue,
     decimal BaseInterestRate,
     string Rescheduled,      // Rescheduled status (consistent across all periods)
-    string Restructured,     // NEW: Restructured status (consistent across all periods)
-    int NoOfTimesRestructured, // NEW: Number of times restructured (consistent across all periods)
+    string Restructured,     // Restructured status (consistent across all periods)
+    int NoOfTimesRestructured, // Number of times restructured (consistent across all periods)
+    string UpgradedToDelinquencyBucket, // NEW: Upgraded to delinquency bucket (consistent across all periods, only populated when both Rescheduled and Restructured are "Yes")
     string StartPeriod);
 
 /// <summary>
@@ -50,7 +51,6 @@ public record FacilityState(
     decimal UndisbursedAmount,
     decimal InterestRate,
     decimal InterestInSuspense,
-    string UpgradedToDelinquencyBucket,
     string IndividuallyImpaired,
     string BucketingInIndividualAssessment,
     bool IsSettled);

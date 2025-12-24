@@ -359,6 +359,11 @@ public class FacilityLifecycleManager
         // NoOfTimesRestructured is based on Rescheduled status (1-3 if Rescheduled="Yes", 0 otherwise)
         var (restructured, timesRestructured) = GenerateRestructuredStatus(random, rescheduled);
 
+        // BUSINESS RULE: Generate Upgraded to Delinquency Bucket (consistent across all periods for the facility)
+        // Only populated when BOTH Rescheduled = "Yes" AND Restructured = "Yes"
+        // Value is between 1-4, but only ~50% of eligible facilities get a value
+        var upgradedToDelinquencyBucket = GenerateUpgradedToDelinquencyBucket(random, rescheduled, restructured);
+
         return new FacilityMaster(
             facilityNumber,
             customer.CustomerNumber,
@@ -380,6 +385,7 @@ public class FacilityLifecycleManager
             rescheduled,          // Store in immutable FacilityMaster
             restructured,         // Store in immutable FacilityMaster
             timesRestructured,    // Store in immutable FacilityMaster
+            upgradedToDelinquencyBucket, // NEW: Store in immutable FacilityMaster
             period.PeriodKey);
     }
 
@@ -529,7 +535,7 @@ public class FacilityLifecycleManager
         var daysPastDue = GenerateInitialDpd(random);
         var interestInSuspense = CalculateInterestInSuspense(totalOS, daysPastDue, random);
         
-        var (upgraded, individuallyImpaired, bucketing) = 
+        var (individuallyImpaired, bucketing) = 
             GenerateRiskFlags(daysPastDue, random);
 
         return new FacilityState(
@@ -540,7 +546,6 @@ public class FacilityLifecycleManager
             undisbursedAmount,
             master.BaseInterestRate,
             interestInSuspense,
-            upgraded,
             individuallyImpaired,
             bucketing,
             IsSettled: false);
@@ -727,6 +732,32 @@ public class FacilityLifecycleManager
         return (restructured, timesRestructured);
     }
 
+    /// <summary>
+    /// Generates the Upgraded to Delinquency Bucket value for a facility.
+    /// BUSINESS RULE: Value should be between 1-4, but ONLY for facilities where BOTH Rescheduled = "Yes" AND Restructured = "Yes"
+    /// Not all such records need a value - only ~50% of eligible facilities get a value assigned
+    /// Distribution: Empty (~50%), or 1, 2, 3, 4 (equal probability for the remaining ~50%)
+    /// </summary>
+    private static string GenerateUpgradedToDelinquencyBucket(Random random, string rescheduled, string restructured)
+    {
+        // Only assign value if BOTH Rescheduled = "Yes" AND Restructured = "Yes"
+        if (!rescheduled.Equals("Yes", StringComparison.OrdinalIgnoreCase) || 
+            !restructured.Equals("Yes", StringComparison.OrdinalIgnoreCase))
+        {
+            return string.Empty;
+        }
+        
+        // For eligible facilities (both Rescheduled and Restructured are "Yes")
+        // Only ~50% will have a value assigned
+        if (random.NextDouble() < 0.50)
+        {
+            // Randomly assign a value between 1-4
+            return random.Next(1, 5).ToString(); // Returns "1", "2", "3", or "4"
+        }
+        
+        return string.Empty;
+    }
+
     private decimal CalculateInterestInSuspense(decimal totalOS, int daysPastDue, Random random)
     {
         // BUSINESS RULE: Interest in Suspense should only be populated when DPD > 90
@@ -874,14 +905,13 @@ public class FacilityLifecycleManager
         return (collateralType, collateralValue);
     }
 
-    private (string upgraded, string individuallyImpaired, string bucketing) GenerateRiskFlags(
+    private (string individuallyImpaired, string bucketing) GenerateRiskFlags(
         int daysPastDue, Random random)
     {
         var dpdFactor = Math.Min(1.0, daysPastDue / 180.0);
         
         var individuallyImpairedProb = Math.Min(0.4, dpdFactor * 0.25);
         
-        var upgraded = (daysPastDue >= 30 && random.NextDouble() < 0.7) ? "Yes" : "No";
         var individuallyImpaired = random.NextDouble() < individuallyImpairedProb ? "Yes" : "No";
         
         // Note: bucketing now uses a simplified logic since Restructured is no longer available here
@@ -894,7 +924,7 @@ public class FacilityLifecycleManager
             _ => "Standard"
         };
 
-        return (upgraded, individuallyImpaired, bucketing);
+        return (individuallyImpaired, bucketing);
     }
 
     private static string SampleFromDistribution(Dictionary<string, double> distribution, Random random)
