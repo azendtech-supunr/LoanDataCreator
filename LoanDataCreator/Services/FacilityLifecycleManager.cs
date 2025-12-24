@@ -152,7 +152,7 @@ public class FacilityLifecycleManager
         // Step 2: Add 2 new customers each year during January
         if (IsJanuaryPeriod(currentPeriod))
         {
-            for (var i = 0; i < 2; i++)
+            for (var i = 0; i < 50; i++)
             {
                 _maxCustomerId++; // Increment to get new customer ID
                 var newCustomerId = _maxCustomerId;
