@@ -256,30 +256,39 @@ public class LifecycleRowFactory
         return (newTotalOS, undisbursedAmount);
     }
 
-    // REMOVED: CalculateInterestRate method is no longer needed
-    // Interest rate is now taken directly from FacilityMaster.BaseInterestRate
-
     private decimal CalculateInterestInSuspense(decimal totalOS, int daysPastDue, Random random)
     {
-        // Interest in suspense depends on DPD
-        if (daysPastDue < _qaRules.InterestInSuspenseDpdThreshold)
+        // BUSINESS RULE: Interest in Suspense should only be populated when DPD > 90
+        // Otherwise, it should be 0 (which will be rendered as empty in CSV)
+        if (daysPastDue <= _qaRules.InterestInSuspenseDpdThreshold)
         {
-            // Low DPD - minimal interest in suspense
-            var baseRate = _amounts.InterestInSuspenseBase;
-            var noise = (random.NextDouble() - 0.5) * 2 * _amounts.InterestInSuspenseNoise;
-            var rate = Math.Max(0, baseRate + noise);
-            return Math.Round(totalOS * (decimal)rate, 2);
+            return 0m;
         }
-        else
+
+        // DPD is above threshold - calculate interest in suspense
+        var baseRate = _amounts.InterestInSuspenseBase;
+        var per30Days = _amounts.InterestInSuspensePer30Dpd * Math.Floor(daysPastDue / 30.0);
+        var noise = (random.NextDouble() - 0.5) * 2 * _amounts.InterestInSuspenseNoise;
+        
+        var rate = Math.Max(0, baseRate + per30Days + noise);
+        var interestInSuspense = Math.Round(totalOS * (decimal)rate, 2);
+
+        // BUSINESS RULE: Interest in Suspense must be less than Total OS
+        // If Total OS is negative or zero, interest in suspense should be 0
+        if (totalOS <= 0)
         {
-            // High DPD - significant interest in suspense
-            var baseRate = _amounts.InterestInSuspenseBase;
-            var per30Days = _amounts.InterestInSuspensePer30Dpd * Math.Floor(daysPastDue / 30.0);
-            var noise = (random.NextDouble() - 0.5) * 2 * _amounts.InterestInSuspenseNoise;
-            
-            var rate = Math.Max(0, baseRate + per30Days + noise);
-            return Math.Round(totalOS * (decimal)rate, 2);
+            return 0m;
         }
+
+        // Ensure interest in suspense is strictly less than Total OS
+        // Cap at 99% of Total OS to maintain the constraint
+        var maxAllowedInterestInSuspense = totalOS * 0.99m;
+        if (interestInSuspense >= totalOS)
+        {
+            interestInSuspense = Math.Round(maxAllowedInterestInSuspense, 2);
+        }
+
+        return interestInSuspense;
     }
 
     private (string rescheduled, string restructured, int timesRestructured, 

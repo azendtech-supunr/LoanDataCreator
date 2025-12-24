@@ -43,6 +43,11 @@ public class SmokeTests
 
     private static DpdModelOptions CreateTestDpdModel() => new();
 
+    private static QaRulesOptions CreateTestQaRules() => new()
+    {
+        InterestInSuspenseDpdThreshold = 90
+    };
+
     public static void RunSmokeTest()
     {
         Console.WriteLine("Running smoke tests...");
@@ -115,9 +120,10 @@ public class SmokeTests
         var customers = Options.Create(CreateTestCustomers());
         var amounts = Options.Create(CreateTestAmounts());
         var dpd = Options.Create(CreateTestDpdModel());
+        var qaRules = Options.Create(CreateTestQaRules());
         
         var customerFactory = new CustomerFactory(seedDeriver, distributions, customers);
-        var periodFactory = new PeriodRowFactory(seedDeriver, customerFactory, distributions, amounts, dpd);
+        var periodFactory = new PeriodRowFactory(seedDeriver, customerFactory, distributions, amounts, dpd, qaRules);
         
         var customer = customerFactory.CreateCustomer(1);
         var row = periodFactory.CreatePeriodRow(customer, 1, "2024");
@@ -139,6 +145,16 @@ public class SmokeTests
         {
             throw new Exception("Customer data inconsistency");
         }
+
+        // Test Interest in Suspense business rule
+        if (row.DaysPastDue > 90 && row.InterestInSuspense == 0)
+            throw new Exception("Interest in Suspense should be populated when DPD > 90");
+            
+        if (row.DaysPastDue <= 90 && row.InterestInSuspense != 0)
+            throw new Exception("Interest in Suspense should be empty when DPD <= 90");
+            
+        if (row.InterestInSuspense >= row.TotalOS && row.TotalOS > 0)
+            throw new Exception("Interest in Suspense must be less than Total OS");
 
         Console.WriteLine("? PeriodRowFactory test passed");
     }
