@@ -747,25 +747,51 @@ public class FacilityLifecycleManager
             collateralType = SampleFromDistribution(_distributions.CollateralTypes, random);
         }
 
-        // Calculate collateral value based on nature and product category
-        // If collateral type is empty, collateral value should be 0
+        // BUSINESS RULE: Calculate collateral value based on collateral type
+        // - If Collateral Type is "Personal Guarantee" or empty ? Collateral Value = 0
+        // - Otherwise ? Collateral Value must be higher than Total OS
         decimal collateralValue;
-        if (string.IsNullOrEmpty(collateralType))
+        
+        // Rule 1: Personal Guarantee or empty collateral type ? value is 0
+        if (string.IsNullOrEmpty(collateralType) || 
+            collateralType.Equals("Personal Guarantee", StringComparison.OrdinalIgnoreCase))
         {
             collateralValue = 0m;
         }
+        // Rule 2: For other collateral types, value must be > Total OS
+        // Since Total OS can be up to 100% of Limit (and typically averages around 75%),
+        // we need to ensure Collateral Value is always higher than the maximum possible Total OS
+        // We use multipliers > 1.0 to ensure Collateral Value > Total OS
         else
         {
-            var multiplier = (nature, upperProductCategory) switch
+            double multiplier;
+            
+            // Generate multipliers that ensure collateral value > limit (which is always >= Total OS)
+            // This guarantees collateral value will be > Total OS for all cases
+            multiplier = (nature, upperProductCategory) switch
             {
-                ("Non-Revolving", _) => random.NextDouble() * 0.5 + 1.0,
-                (_, "MORTGAGE") => random.NextDouble() * 0.3 + 1.2,
-                (_, "HOUSING LOAN") => random.NextDouble() * 0.3 + 1.2, // Similar to mortgage
-                ("Revolving", _) => random.NextDouble() * 0.2 + 0.1,
-                _ => random.NextDouble() * 0.3 + 0.5
+                // Non-Revolving products: 1.1x to 1.8x of Limit (always > Total OS)
+                ("Non-Revolving", _) => random.NextDouble() * 0.7 + 1.1,
+                
+                // Mortgage/Housing Loan: 1.2x to 1.6x of Limit (always > Total OS)
+                (_, "MORTGAGE") or (_, "HOUSING LOAN") => random.NextDouble() * 0.4 + 1.2,
+                
+                // Revolving products: Total OS is typically low, so 1.0x to 1.3x is sufficient
+                // But we ensure minimum 1.05x to guarantee collateral > Total OS
+                ("Revolving", _) => random.NextDouble() * 0.25 + 1.05,
+                
+                // Other products: 1.1x to 1.5x of Limit (always > Total OS)
+                _ => random.NextDouble() * 0.4 + 1.1
             };
 
             collateralValue = Math.Round(limit * (decimal)multiplier, 2);
+            
+            // DEFENSIVE: Ensure collateral value is always at least marginally higher than limit
+            // This provides an extra safety margin since Total OS <= Limit
+            if (collateralValue <= limit)
+            {
+                collateralValue = Math.Round(limit * 1.05m, 2);
+            }
         }
 
         return (collateralType, collateralValue);
