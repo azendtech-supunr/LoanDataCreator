@@ -346,7 +346,7 @@ public class FacilityLifecycleManager
 
         var (grantDate, maturityDate) = GenerateDates(productCategory, period.PeriodEndDate, random);
         var limit = GenerateLimit(random);
-        var (collateralType, collateralValue) = GenerateCollateral(nature, productCategory, limit, random);
+        var (collateralType, collateralValue) = GenerateCollateral(nature, productCategory, selectedSegment.LgdSegment, limit, random);
         
         var baseInterestRate = GenerateBaseInterestRate(selectedSegment.PdSegment, random);
 
@@ -686,19 +686,88 @@ public class FacilityLifecycleManager
     }
 
     private (string collateralType, decimal collateralValue) GenerateCollateral(
-        string nature, string productCategory, decimal limit, Random random)
+        string nature, string productCategory, string segmentForLGD, decimal limit, Random random)
     {
-        var collateralType = SampleFromDistribution(_distributions.CollateralTypes, random);
+        string collateralType;
         
-        var multiplier = (nature, productCategory.ToUpperInvariant()) switch
+        // Apply business rules for Collateral Type based on priority:
+        // 1. Product Category specific rules
+        // 2. Segment for LGD rules
+        // 3. Special combinations for Lease
+        
+        var upperProductCategory = productCategory.ToUpperInvariant();
+        
+        // Rule: Overdraft and Short Term Loan should have empty Collateral Type
+        if (upperProductCategory == "OVERDRAFT" || upperProductCategory == "SHORT TERM LOAN")
         {
-            ("Non-Revolving", _) => random.NextDouble() * 0.5 + 1.0,
-            (_, "MORTGAGE") => random.NextDouble() * 0.3 + 1.2,
-            ("Revolving", _) => random.NextDouble() * 0.2 + 0.1,
-            _ => random.NextDouble() * 0.3 + 0.5
-        };
+            collateralType = string.Empty;
+        }
+        // Rule: Credit Cards can be either empty (70%) or Fixed Deposit (Cash Collateral) (30%)
+        else if (upperProductCategory == "CREDIT CARD" || upperProductCategory == "CREDIT CARDS")
+        {
+            collateralType = random.NextDouble() < 0.70 
+                ? string.Empty 
+                : "Fixed Deposit (Cash Collateral)";
+        }
+        // Rule: Gold Loan should be Gold
+        else if (upperProductCategory == "GOLD LOAN")
+        {
+            collateralType = "Gold";
+        }
+        // Rule: Housing Loan should be Property
+        else if (upperProductCategory == "HOUSING LOAN")
+        {
+            collateralType = "Property";
+        }
+        // Rule: Lease products with specific combinations
+        else if (upperProductCategory == "LEASE" || upperProductCategory == "LEASING")
+        {
+            // Special combinations based on Segment for LGD
+            collateralType = segmentForLGD.ToUpperInvariant() switch
+            {
+                "NON-HYBRID" => "Car Non-Hybrid",
+                "HYBRID" => "Car Hybrid",
+                "LE-OTHER" => "Machinery",
+                _ => "Machinery" // Default for Lease if segment doesn't match
+            };
+        }
+        // Rule: Segment for LGD = 'Secured' ? Fixed Deposit (Cash Collateral)
+        else if (segmentForLGD.Equals("Secured", StringComparison.OrdinalIgnoreCase))
+        {
+            collateralType = "Fixed Deposit (Cash Collateral)";
+        }
+        // Rule: Segment for LGD = 'Unsecured' ? Personal Guarantee
+        else if (segmentForLGD.Equals("Unsecured", StringComparison.OrdinalIgnoreCase))
+        {
+            collateralType = "Personal Guarantee";
+        }
+        // Fallback: Sample from distribution (for any edge cases not covered)
+        else
+        {
+            collateralType = SampleFromDistribution(_distributions.CollateralTypes, random);
+        }
 
-        var collateralValue = Math.Round(limit * (decimal)multiplier, 2);
+        // Calculate collateral value based on nature and product category
+        // If collateral type is empty, collateral value should be 0
+        decimal collateralValue;
+        if (string.IsNullOrEmpty(collateralType))
+        {
+            collateralValue = 0m;
+        }
+        else
+        {
+            var multiplier = (nature, upperProductCategory) switch
+            {
+                ("Non-Revolving", _) => random.NextDouble() * 0.5 + 1.0,
+                (_, "MORTGAGE") => random.NextDouble() * 0.3 + 1.2,
+                (_, "HOUSING LOAN") => random.NextDouble() * 0.3 + 1.2, // Similar to mortgage
+                ("Revolving", _) => random.NextDouble() * 0.2 + 0.1,
+                _ => random.NextDouble() * 0.3 + 0.5
+            };
+
+            collateralValue = Math.Round(limit * (decimal)multiplier, 2);
+        }
+
         return (collateralType, collateralValue);
     }
 
